@@ -1,0 +1,113 @@
+{
+	// The size of the context in bytes.
+	// This will determine how many bytes back and forth to collect for each
+	// selection, and provide it as preText and postText for the prompt builder
+	"context_size": 512,
+
+	// default timeout for the API to respond
+	"max_seconds": 60,
+
+	// credentials: add credentials on this object
+	// WARNING: this should be configured in your local settings file.
+	"credentials": {
+	},
+
+	// prompts: add custom prompts or replace the defaults
+	"prompts": {
+	},
+
+	// servers: add custom servers or replace the defaults
+	"servers": {
+	},
+
+	// --------------------------------------------------------------------------------
+	// you don't really need to edit from here unless you read the plugin documentation
+
+	// prompts
+	"prompts_default": {
+		"python_docstring": {
+			"name": "Python Docstring reST",
+			"description": "Add the docstring to the given python function in reST format.",
+			"endpoints": ["openai/edits"],
+			"requires": ["text"],
+			"syntax": ["python"],
+			"text": "The following is a python function:\n${text}",
+			"instruction": "Add the docstring to this python function, using reST format.",
+			"request": {
+				"temperature": 0.4,
+			},
+			"command": "replace", // append, insert(placeholder), output
+			//"placeholder": "/RESPONSE/"
+		},
+		"python_docstring_askcodi": {
+			"name": "Python Docstring reST",
+			"description": "Add the docstring to the given python function in reST format.",
+			"endpoints": ["askcodi/edits"],
+			"requires": ["text"],
+			"syntax": ["python"],
+			"text": "The following is a python function:\n${text}",
+			"instruction": "Add the docstring to this python function, using reST format.",
+			"request": {
+				"temperature": 0.4,
+			},
+			"command": "replace", // append, insert(placeholder), output
+			//"placeholder": "/RESPONSE/"
+		}
+	},
+
+	// servers
+	"servers_default": {
+		"openai": {
+			"name": "OpenAI",
+			"description": "OpenAI API v1",
+			"scheme": "https",
+			"host": "api.openai.com",
+			"port": 443,
+			"requires_credentials": ["openai_api_key"],
+			"headers": {
+				"Authorization": "Bearer ${openai_api_key}",
+				"Content-Type": "application/json"
+			},
+			"endpoints": {
+				"completions": {
+					"name": "Completion",
+					"description": "Generate text after selection",
+					"method": "POST",
+					"resource": "/v1/completions",
+					"requires": ["text"],
+					"request": {
+						"model": "text-davinci-003",
+						"prompt": "${text}",
+						"max_tokens": 512,
+						// "temperature": 0.0,
+						// "top_p": 1,
+						// "n": 1,
+						// "suffix": null,
+						// "stream": false,
+						// "logprobs": null,
+						// "echo": false,
+						// "stop": null,
+						// "presence_penalty": 0,
+						// "frequency_penalty": 0,
+						// "best_of": 1,
+					}
+				},
+				"edits": {
+					"name": "Edit",
+					"description": "Edit selected text",
+					"method": "POST",
+					"resource": "/v1/edits",
+					"requires": ["text", "instruction"],
+					"request": {
+						"model": "text-davinci-edit-001",
+						"input": "${text}",
+						"instruction": "${instruction}",
+						// "temperature": 1,
+						// "top_p": 1,
+						// "n": 1,
+					}
+				},
+			}
+		}
+	}
+}

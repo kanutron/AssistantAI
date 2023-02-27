@@ -1,0 +1,10 @@
+[
+    {
+        "caption": "Assistant: Edit",
+        "command": "assistant_ai_edit"
+    },
+    {
+        "caption": "Assistant: Complete",
+        "command": "assistant_ai_complete"
+    }
+]

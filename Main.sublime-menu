@@ -1,0 +1,29 @@
+[
+	{
+		"id": "preferences",
+		"children":
+		[
+			{
+				"id": "package-settings",
+				"children":
+				[
+					{
+						"caption": "AssistantAI",
+						"children":
+						[
+							{
+								"caption": "Settings",
+								"command": "edit_settings",
+								"args":
+								{
+									"base_file": "${packages}/AssistantAI/assistant_ai.sublime-settings",
+									"default": "{\n\t$0\n}\n"
+								}
+							}
+						]
+					}
+				]
+			}
+		]
+	}
+]
