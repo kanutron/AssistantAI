@@ -9,102 +9,215 @@
 
 	// credentials: add credentials on this object
 	// WARNING: this should be configured in your local settings file.
-	"credentials": {
-	},
+	"credentials": {},
 
 	// prompts: add custom prompts or replace the defaults
-	"prompts": {
-	},
+	"prompts": [],
 
 	// servers: add custom servers or replace the defaults
-	"servers": {
-	},
+	"servers": {},
 
 	// --------------------------------------------------------------------------------
 	// you don't really need to edit from here unless you read the plugin documentation
 
 	// prompts
-	"prompts_default": {
-		"python_docstring": {
-			"name": "Python Docstring reST",
-			"description": "Add the docstring to the given python function in reST format.",
-			"endpoints": ["openai/edits"],
-			"requires": ["text"],
-			"syntax": ["python"],
-			"text": "The following is a python function:\n${text}",
-			"instruction": "Add the docstring to this python function, using reST format.",
-			"request": {
+	"prompts_default": [
+		{
+			// package provided prompts must have an id, user provided promps will self-generate one
+			"id": "continue_coding",
+
+			// import an existing prompt and update all main keys with this specification
+			// you can specify the string of another prompt_id or an object with fine tune specs
+			// TODO: Document this
+			"import": {
+				"from": null, // parent prompt
+				"required_inputs": "update", // "replace, update, delete"
+				"required_context": "replace", // "replace, update, delete"
+				"required_syntax": "update", // "replace, update, delete"
+				"required_endpoints": "update", // "replace, update, delete"
+				"required_prompt_responses": "update", // "replace, update, delete"
+				"provided_vars": "update", // "replace, update, delete"
+				"provided_params": "update", // "replace, update, delete"
+			},
+
+			// how the user will see this prompt
+			"name": "Continue coding",
+			"description": "Given a selected text, continue coding from there.",
+			// required inputs: text = selection, instruction will be prompted to user
+			"required_inputs": ["text"], // text, instruction
+			// required context relative to selection or cursor
+			"required_context": {
+				"unit": "chars", // chars, lines (default null = chars)
+				"pre_unit": "chars", //chars, lines (default null = unit = chars)
+				"pre_size": null, // default null = 0 = not required
+				"post_unit": "chars", //chars, lines (default null = unit = chars)
+				"post_size": null, // default null = 0 = not required, integer number of post_unit
+			},
+			// enable this prompt only to these syntax
+			"required_syntax": ["python"], // default: null = any
+			// enable this prompt only when those endpoints are available
+			"required_endpoints": [ // default: null = any
+				"openai/completions"
+			],
+			// requires other prompt responses that will be stored in variables
+			"required_prompt_responses": {
+				// each key will be a variable available as "${key}" to be used in 'provides'
+				"summary": {
+					"prompt": "make_summary",
+					"inputs": {
+						"text": "${text}",
+					}
+				}
+			},
+			// if not specified, defaults to:
+			// - each input as key="${variable}"
+			// - if context required, as pre="${pre}", post="${post}"
+			// - is syntax as syntax="${syntax}"
+			// accepted keys = text, instruction, pre, post, syntax
+			// available variables are
+			// - inputs (text, instruction)
+			// - context (pre, post)
+			// - syntax
+			// - prompt responses in variables (as specified in prompt_responses)
+			"provided_vars": {
+				"text": "${text}",
+				"instruction": "${instruction}",
+			},
+			"provided_params": {
 				"temperature": 0.4,
 			},
-			"command": "replace", // append, insert(placeholder), output
-			//"placeholder": "/RESPONSE/"
+			// specify what to do with the response
+			// replace, append, output, create, insert(placeholder)
+			"command": "append",
+			// for the insert command, specify the placeholder to find/replace the output
+			"insert_placeholder": "${output}", // for insert command, set the placeholder to replace with the output
 		},
-		"python_docstring_askcodi": {
-			"name": "Python Docstring reST",
-			"description": "Add the docstring to the given python function in reST format.",
-			"endpoints": ["askcodi/edits"],
-			"requires": ["text"],
-			"syntax": ["python"],
-			"text": "The following is a python function:\n${text}",
-			"instruction": "Add the docstring to this python function, using reST format.",
-			"request": {
+		{
+			"id": "ask_change_code",
+			"name": "Ask a change to code",
+			"description": "Give an instruction to change the selected code.",
+			"required_inputs": ["text", "instruction"],
+			"required_endpoints": ["openai/edits"],
+			"provided_vars": {
+				"text": "${text}",
+				"instruction": "${instruction} to this ${syntax} code",
+			},
+			"provided_params": {
 				"temperature": 0.4,
 			},
 			"command": "replace", // append, insert(placeholder), output
-			//"placeholder": "/RESPONSE/"
-		}
-	},
+		},
+		{
+			"id": "continue_coding_ex2",
+			"import": "continue_coding_ex1",
+			"name": "Continue coding extended 2",
+		},
+		{
+			"id": "continue_coding_ex1",
+			"import": "continue_coding",
+			"name": "Continue coding extended",
+		},
+	],
 
 	// servers
 	"servers_default": {
 		"openai": {
 			"name": "OpenAI",
-			"description": "OpenAI API v1",
-			"scheme": "https",
-			"host": "api.openai.com",
-			"port": 443,
-			"requires_credentials": ["openai_api_key"],
+			"url": "https://api.openai.com:443",
+			"requires_credentials": [
+				"openai_api_key"
+			],
 			"headers": {
 				"Authorization": "Bearer ${openai_api_key}",
 				"Content-Type": "application/json"
 			},
 			"endpoints": {
 				"completions": {
-					"name": "Completion",
-					"description": "Generate text after selection",
+					"name": "Completions",
 					"method": "POST",
 					"resource": "/v1/completions",
-					"requires": ["text"],
-					"request": {
+					"required_vars": ["text"],
+					"valid_params": {
+						"model": "string",
+						"prompt": "string",
+						"max_tokens": "integer",
+						"temperature": "float",
+						"top_p": "integer",
+						"n": "integer",
+						"suffix": "string",
+						"stream": "boolean",
+						"logprobs": "boolean",
+						"echo": "boolean",
+						"stop": "string",
+						"presence_penalty": "integer",
+						"frequency_penalty": "integer",
+						"best_of": "integer",
+					},
+					"params": {
 						"model": "text-davinci-003",
 						"prompt": "${text}",
-						"max_tokens": 512,
-						// "temperature": 0.0,
-						// "top_p": 1,
-						// "n": 1,
-						// "suffix": null,
-						// "stream": false,
-						// "logprobs": null,
-						// "echo": false,
-						// "stop": null,
-						// "presence_penalty": 0,
-						// "frequency_penalty": 0,
-						// "best_of": 1,
 					}
 				},
 				"edits": {
-					"name": "Edit",
-					"description": "Edit selected text",
+					"name": "Edits",
 					"method": "POST",
 					"resource": "/v1/edits",
-					"requires": ["text", "instruction"],
-					"request": {
+					"required_vars": ["text", "instruction"],
+					"valid_params": {
+						"model": "string",
+						"input": "string",
+						"instruction": "string",
+						"temperature": "float",
+						"top_p": "integer",
+						"n": "integer",
+					},
+					"params": {
 						"model": "text-davinci-edit-001",
 						"input": "${text}",
 						"instruction": "${instruction}",
-						// "temperature": 1,
-						// "top_p": 1,
-						// "n": 1,
+					}
+				},
+			}
+		},
+		"askcodi": {
+			"name": "AskCodi",
+			"url": "https://us-central1-askcodi-1a402.cloudfunctions.net",
+			"requires_credentials": [
+				"ask_codi_key",
+				"ask_codi_device_id",
+				"ask_codi_fast_token",
+				"ask_coki_editor",
+				"ask_codi_version"
+			],
+			"headers": {
+	            "Authorization": "${ask_codi_key}",
+	            "deviceid": "${ask_codi_device_id}",
+	            "idetype": "${ask_coki_editor}",
+	            "token": "${ask_codi_fast_token}",
+	            "source": "${ask_coki_editor} - ${ask_codi_version}",
+	            "Content-Type": "application/json"
+			},
+			"endpoints": {
+				"completion": {
+					"name": "Edit",
+					"description": "Edit selected text",
+					"method": "POST",
+					"resource": "/askCodiExtension/completion",
+					"required_vars": ["pre"],
+					"valid_params": {
+			            "query": "${pre}",
+			            "generated": "",
+			            "context": "",
+			            "fromLanguage1": "${syntax}",
+			            "fromLanguage2": "",
+			            "toLanguage": "",
+			            "info": "",
+			            "position": 0
+					},
+					"params": {
+			            "query": "${pre}",
+			            "fromLanguage1": "${syntax}",
+			            "position": 0
 					}
 				},
 			}

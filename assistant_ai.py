@@ -1,122 +1,45 @@
 import json
 import threading
+import functools
 import http.client
 import sublime
 import sublime_plugin
 
-VERSION_ASSISTANT_AI = "0.0.1"
-VERSION_ST = int(sublime.version())
-
 # The global scope ensures that the settings can
 # be easily accessed from within all the classes.
-plugin_settings = None
+from .settings import AssistantAISettings
+settings = AssistantAISettings()
+VERSION_ASSISTANT_AI = "0.0.1"
+VERSION_ST = int(sublime.version())
 
 def plugin_loaded():
     """
     This module level function is called on ST startup when the API is ready.
     """
-    global plugin_settings
-    plugin_settings = AssistantSettings()
-    plugin_settings.load()
-    # TODO: this is hardcore
-    for k in ('credentials', 'prompts', 'servers'):
-        plugin_settings.config.add_on_change(k, plugin_settings.load)
+    global settings
+    settings.load()
+    settings.config.add_on_change('assistant_ai', settings.load)
 
 def plugin_unloaded():
     """
     This module level function is called just before the plugin is unloaded.
     """
-    global plugin_settings
-    # TODO: this is hardcore
-    if isinstance(plugin_settings, AssistantSettings):
-        for k in ('credentials', 'prompts', 'servers'):
-            plugin_settings.config.clear_on_change(k)
-
-class AssistantSettings:
-    """
-    Handles all the settings.
-    """
-    def __init__(self):
-        SETTINGS_FILE = 'assistant_ai.sublime-settings'
-        self.config = sublime.load_settings(SETTINGS_FILE)
-
-    def load(self):
-        SETTINGS_FILE = 'assistant_ai.sublime-settings'
-        self.config = sublime.load_settings(SETTINGS_FILE)
-        self.credentials = self.config.get('credentials', {})
-        self.servers = self.get_enabled_servers()
-        self.prompts = self.get_usable_prompts()
-
-        for s in self.servers:
-            print(f"Server: {s}")
-        for p in self.prompts:
-            print(f"Prompt: {p}")
-
-    def get_enabled_servers(self):
-        """
-        Returns all configured servers with valid credentials or those don't require any credential
-        """
-        servers_user = self.get('servers', {})
-        servers_def = self.get('servers_default', {})
-        servers_all = self.merge_dicts(servers_def, servers_user)
-        servers = {}
-        servers_to_dismiss = []
-        for server_id, server in servers_all.items():
-            if not 'requires_credentials' in server:
-                servers[server_id] = server  # this server requires no credentials
-            if isinstance(server['requires_credentials'], str):
-                server['requires_credentials'] = [server['requires_credentials'],]
-            for req_cred in server['requires_credentials']:
-                if req_cred not in self.credentials:
-                    servers_to_dismiss.append(server_id)
-            if server_id not in servers_to_dismiss:
-                servers[server_id] = server
-        return servers
-
-    def get_usable_prompts(self):
-        """
-        Returns all configured prompts that requires valid available endpoints or no specific endpoints
-        """
-        prompts_user = self.config.get('prompts', {})
-        prompts_def = self.config.get('prompts_default', {})
-        prompts_all = self.merge_dicts(prompts_def, prompts_user)
-        prompts = {}
-        for prompt_id, prompt in prompts_all.items():
-            if not 'endpoints' in prompt:
-                prompts[prompt_id] = prompt
-            if isinstance(prompt['endpoints'], str):
-                prompt['endpoints'] = [prompt['endpoints'],]
-            for req_srvep in prompt['endpoints']:
-                try:
-                    srv, ep = req_srvep.split('/', 1)
-                    if srv in self.servers and ep in self.servers[srv].get('endpoints', {}):
-                        prompts[prompt_id] = prompt
-                except Exception:
-                    print(f"Error parsing endpoints for prompt {prompt_id}. Should be 'server/endpoint', but got '{req_srvep}'.")
-        return prompts
-
-    def get(self, key: str, default=None):
-        return self.config.get(key, default)
-
-    def merge_dicts(self, old: dict, new: dict) -> dict:
-        for k, v in old.items():
-            if k in new:
-                v.update(new[k])
-            new[k] = v
-        return new
+    global settings
+    settings.config.clear_on_change('assistant_ai')
 
 class AssistantAiCommand(sublime_plugin.TextCommand):
-    global plugin_settings
-    # settings = plugin_settings
+    global settings
 
     def check_setup(self):
         """
         Perform a few checks to make sure codex can run
         """
-        if len(self.plugin_settings.servers) == 0 or len(self.plugin_settings.prompts) == 0:
+        # TODO: these checks are too late if invoked in run()
+        if len(settings.servers) == 0 or len(settings.prompts) == 0:
             msg = "Please add at least one server's credentials in AssistantAI package settings"
             sublime.status_message(msg)
             raise ValueError(msg)
+        # check selection is valid
         empty = True
         for region in self.view.sel():
             empty = region.empty()
@@ -129,7 +52,7 @@ class AssistantAiCommand(sublime_plugin.TextCommand):
         """
         Recursive method for checking in on the async API fetcher
         """
-        max_seconds = self.settings.get('max_seconds', 60)
+        max_seconds = settings.get('max_seconds', 60)
 
         # If we ran out of time, let user know, stop checking on the thread
         if seconds > max_seconds:
@@ -165,7 +88,7 @@ class AssistantAiCommand(sublime_plugin.TextCommand):
         Given a region, return the selected text, and context pre and post such text
         """
         # TODO: make pre and post contains only full lines
-        context_sixe = self.settings.get('context_sixe', 512)
+        context_sixe = settings.get('context_sixe', 512)
         text = self.view.substr(region)
         # get the lines for the context
         lines = self.view.lines(region)
@@ -182,18 +105,37 @@ class AssistantAiCommand(sublime_plugin.TextCommand):
         post = self.view.substr(reg_post)
         return text, pre, post
 
-class AssistantAiEditCommand(AssistantAiCommand):
-    def input(self, args):
-        if 'server' not in args:
-            return ServerListInputHandler()
-        elif 'endpoint' not in args:
-            return EndpointListInputHandler()
-        elif 'prompt' not in args:
-            return PromptListInputHandler()
-        elif 'instruction' not in args:
-            return InstructionInputHandler()
+class AssistantAiPromptCommand(AssistantAiCommand):
+    global settings
 
-    def run(self, edit, server, endpoint, prompt, instruction):
+    def input(self, args):
+        # no server specified but only one available
+        # if 'server' not in args and len(settings.servers) == 1:
+        #     for server in settings.servers:
+        #         args['server'] = server
+
+        # no endpoint specified but the server has only one
+        # if 'server' in args and 'endpoint' not in args:
+        #     server = settings.servers[args['server']]
+        #     if len(server.get('endpoints', {})) == 1:
+        #         for endpoint in server:
+        #             args['endpoint'] = endpoint
+
+        # check how many prompts are available for this server/endpoint
+        # if 'server' in args and 'endpoint' in args:
+
+
+        # return ServerListInputHandler(args.get('server'))
+        # if 'endpoint' not in args:
+        #     return EndpointListInputHandler()
+        # if 'prompt' not in args:
+        syntax = self.view.syntax()
+        syntax = syntax.name if syntax else ''
+        return PromptListInputHandler(syntax)
+        # if 'instruction' not in args:
+        #     return InstructionInputHandler()
+
+    def run(self, edit, prompt, endpoint, instruction=None):
         # Check config and prompt
         self.check_setup()
 
@@ -260,41 +202,39 @@ class AsyncAssistant(threading.Thread):
         #     sublime.status_message("Codex tokens used: " + str(useage))
         # return ai_text
 
-class ServerListInputHandler(sublime_plugin.ListInputHandler):
-    def name(self):
-        return "server"
+# class ServerListInputHandler(sublime_plugin.ListInputHandler):
+#     global settings
 
-    def placeholder(self):
-        return "Select a server"
+#     def __init__(self, initial_text):
+#         super().__init__()
+#         self._initial_text = initial_text
 
-    def description(self, value, text):
-        return value.title().replace('_', ' ')
+#     def name(self):
+#         return "server"
 
-    def list_items(self):
-        return [("OpenAI", "openai")]
+#     def placeholder(self):
+#         return "Select a server"
 
-    def next_input(self, args):
-        print(f"ServerInput args: {args}")
-        return EndpointListInputHandler()
+#     def list_items(self):
+#         items = []
+#         for sid, server in settings.servers.items():
+#             items.append((server.get('name', sid.title()), sid))
+#         return items
 
-class EndpointListInputHandler(sublime_plugin.ListInputHandler):
-    def name(self):
-        return "endpoint"
+#     def description(self, value, text):
+#         return text
 
-    def placeholder(self):
-        return "Select an endpoint"
-
-    def description(self, value, text):
-        return value.title().replace('_', ' ')
-
-    def list_items(self):
-        return [("Completions", "completions"), ("Edits", "edits")]
-
-    def next_input(self, args):
-        print(f"Endpoint args: {args}")
-        return PromptListInputHandler()
+#     def next_input(self, args):
+#         print(f"Server args: {args}")
+#         return EndpointListInputHandler()
 
 class PromptListInputHandler(sublime_plugin.ListInputHandler):
+    global settings
+
+    def __init__(self, syntax):
+        super().__init__()
+        self.syntax = syntax.lower()
+
     def name(self):
         return "prompt"
 
@@ -302,14 +242,26 @@ class PromptListInputHandler(sublime_plugin.ListInputHandler):
         return "Select a prompt"
 
     def description(self, value, text):
-        return value.title().replace('_', ' ')
+        return text
 
     def list_items(self):
-        return [("Python Docstring reST", "python_docstring")]
+        items = []
+        for pid, prompt in settings.prompts.items():
+            if self.syntax in prompt.get('required_syntax', [self.syntax,]):
+                items.append((prompt.get('name', pid.title()), pid))
+        return items
 
     def next_input(self, args):
-        print(f"PromptInput args: {args}")
-        return InstructionInputHandler()
+        # if 'prompt' not in args:
+        #     return PromptListInputHandler(self.syntax)
+        prompt = settings.prompts[args['prompt']]
+        print(f"PromptInput args: {args}") # DEBUG
+        if 'instruction' in prompt.get('required_inputs', []):
+            return InstructionInputHandler()
+        else:
+            args.setdefault('instruction', '')
+            return EndpointListInputHandler()
+
 
 class InstructionInputHandler(sublime_plugin.TextInputHandler):
     def name(self):
@@ -321,6 +273,40 @@ class InstructionInputHandler(sublime_plugin.TextInputHandler):
     def preview(self, text):
         # TODO: preview the rendered prompt
         ...
+
+    def next_input(self, args):
+        prompt = settings.prompts.get(args.get('prompt', ''))
+        # if not prompt:
+        #     return PromptListInputHandler('')
+        req_ep = prompt.get('required_endpoints', [])
+        if req_ep and len(req_ep) <= 1:
+            args.setdefault('endpoint', prompt['required_endpoints'][0])
+            print(f"InstructionInput args: {args}") # DEBUG
+        else:
+            print(f"InstructionInput args: {args}") # DEBUG
+            return EndpointListInputHandler()
+
+class EndpointListInputHandler(sublime_plugin.ListInputHandler):
+    global settings
+
+    def name(self):
+        return "endpoint"
+
+    def placeholder(self):
+        return "Select an endpoint"
+
+    def list_items(self):
+        items = []
+        for eid, endpoint in settings.endpoints.items():
+            items.append((endpoint.get('name', eid.title()), eid))
+        return items
+
+    def description(self, value, text):
+        return text
+
+    def next_input(self, args):
+        print(f"EndpointInput args: {args}") # DEBUG
+        args.setdefault('instruction', '')
 
 class AssistantAiReplaceTextCommand(sublime_plugin.TextCommand):
     """

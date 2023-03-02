@@ -1,10 +1,6 @@
 [
     {
-        "caption": "Assistant: Edit",
-        "command": "assistant_ai_edit"
+        "caption": "AssistantAI",
+        "command": "assistant_ai_prompt"
     },
-    {
-        "caption": "Assistant: Complete",
-        "command": "assistant_ai_complete"
-    }
 ]
