@@ -3,3 +3,6 @@
 
 # python
 *.pyc
+
+# temproary folder
+tmp/
