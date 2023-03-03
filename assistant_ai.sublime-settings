@@ -1,9 +1,4 @@
 {
-	// The size of the context in bytes.
-	// This will determine how many bytes back and forth to collect for each
-	// selection, and provide it as preText and postText for the prompt builder
-	"context_size": 512,
-
 	// default timeout for the API to respond
 	"max_seconds": 60,
 
@@ -48,13 +43,11 @@
 			// required context relative to selection or cursor
 			"required_context": {
 				"unit": "chars", // chars, lines (default null = chars)
-				"pre_unit": "chars", //chars, lines (default null = unit = chars)
-				"pre_size": null, // default null = 0 = not required
-				"post_unit": "chars", //chars, lines (default null = unit = chars)
-				"post_size": null, // default null = 0 = not required, integer number of post_unit
+				"pre_size": 128, // default null = 0 = not required
+				"post_size": 128, // default null = 0 = not required, integer number of post_unit
 			},
 			// enable this prompt only to these syntax
-			"required_syntax": ["python"], // default: null = any
+			//"required_syntax": ["python"], // default: null = any
 			// enable this prompt only when those endpoints are available
 			"required_endpoints": [ // default: null = any
 				"openai/completions"
@@ -80,11 +73,11 @@
 			// - syntax
 			// - prompt responses in variables (as specified in prompt_responses)
 			"provided_vars": {
-				"text": "${text}",
-				"instruction": "${instruction}",
+				"text": "${text}"
 			},
 			"provided_params": {
-				"temperature": 0.4,
+				"temperature": 1.0,
+				"max_tokens": 512,
 			},
 			// specify what to do with the response
 			// replace, append, output, create, insert(placeholder)
@@ -100,10 +93,10 @@
 			"required_endpoints": ["openai/edits"],
 			"provided_vars": {
 				"text": "${text}",
-				"instruction": "${instruction} to this ${syntax} code",
+				"instruction": "${instruction}",
 			},
 			"provided_params": {
-				"temperature": 0.4,
+				"temperature": 1.0,
 			},
 			"command": "replace", // append, insert(placeholder), output
 		},
