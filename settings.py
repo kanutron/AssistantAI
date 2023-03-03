@@ -34,8 +34,6 @@ class AssistantAISettings:
         for cid, cred in creds_all.items():
             if cred is not None:
                 creds[cid] = cred
-        for c in creds:
-            print(f'Credential: {c}') # DEBUG
         self.credentials = creds
 
     def load_enabled_servers(self):
@@ -61,9 +59,6 @@ class AssistantAISettings:
                     servers_to_dismiss.append(sid)
             if sid not in servers_to_dismiss:
                 servers[sid] = server
-        # DEBUG
-        for s in servers:
-            print(f'Server: {s}')
         self.servers = servers
 
     def load_enabled_endpoints(self):
@@ -76,10 +71,9 @@ class AssistantAISettings:
                 for sk in server:
                     if sk not in ('name', 'description', 'endpoints'):
                         endpoint[sk] = server[sk]
+                    endpoint['name_server'] = server.get('name', '')
+
                 endpoints[f'{sid}/{eid}'] = endpoint
-        # DEBUG
-        for e in endpoints:
-            print(f'Endpoint: {e}')
         self.endpoints = endpoints
 
     def load_usable_prompts(self):
@@ -114,9 +108,6 @@ class AssistantAISettings:
                 self.prompts[p] = proc_prompt
             else:
                 del(self.prompts[p])
-        # DEBUG
-        for p in self.prompts:
-            print(f'Prompt: {p}')
 
     def prompt_import(self, p, prompt, chain=None):
         '''
@@ -201,35 +192,42 @@ class AssistantAISettings:
             if isinstance(parent_v, dict) and isinstance(prompt_v, dict):
                 new[key] = parent_v.update(prompt_v)
                 continue
-            if not new[key]:
-                del(new[key])
+            # if not new[key]:
+            #     del(new[key])
         return new
 
-    def get_prompts_by_edit_state(self, edit):
+    def get_prompts_by_context(self, edit):
         '''
         Returns all usable prompts filtering by current edit state.
         Seleteced text, available context pre and/or post contents.
         '''
-        # TOOD: implement this.
+        # TOOD: Should eval available context size and dismiss prompts that requires unmet context
         return self.prompts
 
     def get_prompts_by_syntax(self, syntax):
         '''
         Returns all loaded usable prompts filtering by syntax
         '''
+        syntax = syntax.lower()
         prompts = {}
         for p, prompt in self.prompts.items():
-            if syntax in prompt.get('required_syntax', [syntax, ]):
+            prompt_syntax = prompt.get('required_syntax', [syntax, ])
+            valid_syntax = [syn.lower() for syn in prompt_syntax]
+            if syntax in valid_syntax:
                 prompts[p] = prompt
         return prompts
 
-    def get_endpoints_for_prompt(self, prompt_id):
+    def get_endpoints_for_prompt(self, prompt):
         '''
         Returns all loaded usable endpoints for a given prompt
         '''
+        # TODO: filter endpoints that accept all params ofered by this prompt
+        # TODO: filter endpoints that requires vars offered by this prompt
         endpoints = {}
         for e, endpoint in self.endpoints.items():
-            if prompt_id in endpoint.get('required_endpoints', [prompt_id, ]):
+            required_eps = prompt.get('required_endpoints', [e, ])
+            valid_eps = [ep.lower() for ep in required_eps]
+            if e.lower() in valid_eps:
                 endpoints[e] = endpoint
         return endpoints
 

@@ -2,6 +2,7 @@ import json
 import threading
 import functools
 import http.client
+from urllib.parse import urlparse
 import sublime
 import sublime_plugin
 
@@ -30,24 +31,6 @@ def plugin_unloaded():
 class AssistantAiCommand(sublime_plugin.TextCommand):
     global settings
 
-    def check_setup(self):
-        """
-        Perform a few checks to make sure codex can run
-        """
-        # TODO: these checks are too late if invoked in run()
-        if len(settings.servers) == 0 or len(settings.prompts) == 0:
-            msg = "Please add at least one server's credentials in AssistantAI package settings"
-            sublime.status_message(msg)
-            raise ValueError(msg)
-        # check selection is valid
-        empty = True
-        for region in self.view.sel():
-            empty = region.empty()
-        if empty:
-            msg = "Please highlight one or more sections of code."
-            sublime.status_message(msg)
-            raise ValueError(msg)
-
     def handle_thread(self, thread, seconds=0):
         """
         Recursive method for checking in on the async API fetcher
@@ -74,104 +57,236 @@ class AssistantAiCommand(sublime_plugin.TextCommand):
         # If we finished with no result, something is wrong
         if not thread.result:
             sublime.status_message("Something is wrong with remote server - aborting")
-            # TODO: clean up or delete thread
             return
+
+        # TODO: make this configurable
+        ai_text = ''
+        if thread.result.get('error', None):
+            raise ValueError(thread.result['error'])
+        else:
+            choice = thread.result.get('choices', [{}])[0]
+            ai_text = choice['text']
+            useage = thread.result['usage']['total_tokens']
+            sublime.status_message("Codex tokens used: " + str(useage))
 
         # TODO: honor prompt command to run
         self.view.run_command('assistant_ai_replace_text', {
             "region": [thread.region.begin(), thread.region.end()],
-            "text": thread.result  # TODO: extract the result text from this response object
+            "text": ai_text  # TODO: extract the result text from this response object
         })
 
-    def get_text(self, region):
+
+    def get_context(self, region, prompt):
         """
         Given a region, return the selected text, and context pre and post such text
         """
-        # TODO: make pre and post contains only full lines
-        context_sixe = settings.get('context_sixe', 512)
+        default_required_context = {
+            "unit": "chars",
+            "pre_size": None,
+            "post_size": None,
+        }
+        rc = prompt.get('required_context', default_required_context)
         text = self.view.substr(region)
-        # get the lines for the context
-        lines = self.view.lines(region)
-        lstart, _ = lines[0]
-        _, lend = lines[-1]
-        # get the regions for the context
-        reg_pre = sublime.Region(lstart - context_sixe, lstart - 2)
-        reg_post = sublime.Region(lend + 3, lend + context_sixe)
-        # ensure pre starts in line_start and post ends  in line_end
-        reg_pre = self.view.expand_by_class(reg_pre, sublime.CLASS_LINE_START)
-        reg_post = self.view.expand_by_class(reg_post, sublime.CLASS_LINE_END)
-        # get the context
-        pre = self.view.substr(reg_pre)
-        post = self.view.substr(reg_post)
+        pre = ''
+        post = ''
+        if rc.get('unit') == 'chars':
+            pre_size = rc.get('pre_size')
+            if pre_size:
+                reg_pre = sublime.Region(region.begin() - pre_size, region.begin())
+                # reg_pre = self.view.expand_by_class(reg_pre, sublime.CLASS_LINE_START)
+                pre = self.view.substr(reg_pre)
+            post_size = rc.get('post_size')
+            if post_size:
+                reg_post = sublime.Region(region.end(), region.end() + post_size)
+                # reg_post = self.view.expand_by_class(reg_post, sublime.CLASS_LINE_END)
+                post = self.view.substr(reg_post)
+        elif rc.get('unit') == 'lines':
+            pre_size = rc.get('pre_size')
+            post_size = rc.get('post_size')
+            vsize = self.view.size()
+            lines = self.view.lines(sublime.Region(0, vsize))
+            line_start = self.view.rowcol(region.begin())[0]
+            line_end = self.view.rowcol(region.end())[0]
+            if pre_size:
+                lstart, _ = lines[max(0, line_start - pre_size)]
+                _, lend = lines[max(0, line_start - 1)]
+                reg_pre = sublime.Region(lstart, lend)
+                pre = self.view.substr(reg_pre)
+            if post_size:
+                lstart, _ = lines[min(line_end + 1, vsize)]
+                _, lend = lines[min(line_end + post_size, vsize)]
+                reg_post = sublime.Region(lstart, lend)
+                post = self.view.substr(reg_post)
         return text, pre, post
 
 class AssistantAiPromptCommand(AssistantAiCommand):
     global settings
 
-    def input(self, args):
-        # no server specified but only one available
-        # if 'server' not in args and len(settings.servers) == 1:
-        #     for server in settings.servers:
-        #         args['server'] = server
+    def quick_panel_prompts(self, syntax=None):
+        """Display a quick panel with all available prompts."""
+        def on_select(index):
+            if index < 0:
+                return
+            pid = ids[index]
+            prompt = prompts[pid]
+            self.view.run_command('assistant_ai_prompt', {
+                "prompt": prompt
+            })
+        prompts = settings.get_prompts_by_syntax(syntax)
+        # TODO: filter by get_prompts_by_context
+        icon = "♡"
+        ids = []
+        items = []
+        for p, prompt in prompts.items():
+            name = prompt.get('name', prompt.get('id', '').replace('_', ' ').title())
+            desc = prompt.get('description', '')
+            ids.append(p)
+            items.append([f"{icon} {name}", f"{desc} [{p.upper()}]"])
+        win = self.view.window()
+        if win:
+            win.show_quick_panel(items=items, on_select=on_select)
 
-        # no endpoint specified but the server has only one
-        # if 'server' in args and 'endpoint' not in args:
-        #     server = settings.servers[args['server']]
-        #     if len(server.get('endpoints', {})) == 1:
-        #         for endpoint in server:
-        #             args['endpoint'] = endpoint
+    def quick_panel_endpoints(self, prompt):
+        """Display a quick panel with all available prompts."""
+        def on_select(index):
+            if index < 0:
+                return
+            eid = ids[index]
+            endpoint = endpoints[eid]
+            self.view.run_command('assistant_ai_prompt', {
+                "prompt": prompt,
+                "endpoint": endpoint,
+            })
+        endpoints = settings.get_endpoints_for_prompt(prompt)
+        icon = "♢"
+        ids = []
+        items = []
+        for e, endpoint in endpoints.items():
+            name = endpoint.get('name', endpoint.get('id', '').replace('_', ' ').title())
+            name_server = endpoint.get('name_server', '')
+            url = endpoint.get('url', '')
+            ids.append(e)
+            items.append([f"{icon} {name_server} {name}", f"{url} [{e}]"])
+        # for endpoints, if only one choice is available, auto select it
+        if len(items) == 1:
+            on_select(0)
+        else:
+            win = self.view.window()
+            if win:
+                win.show_quick_panel(items=items, on_select=on_select)
 
-        # check how many prompts are available for this server/endpoint
-        # if 'server' in args and 'endpoint' in args:
+    def input_panel(self, key, caption, prompt, endpoint, **kwargs):
+        """Display a input panel asking the user for the instruction."""
+        # TODO: should accept req_in, caption, and list of options
+        def on_done(text):
+            self.view.run_command('assistant_ai_prompt', {
+                "prompt": prompt,
+                "endpoint": endpoint,
+                key: text,
+                **kwargs
+            })
+        win = self.view.window()
+        if win:
+            win.show_input_panel(caption=caption, initial_text="",
+                on_done=on_done, on_change=None, on_cancel=None)
 
-
-        # return ServerListInputHandler(args.get('server'))
-        # if 'endpoint' not in args:
-        #     return EndpointListInputHandler()
-        # if 'prompt' not in args:
+    def run(self, edit, prompt=None, endpoint=None, **kwargs):
+        # get the syntax
         syntax = self.view.syntax()
-        syntax = syntax.name if syntax else ''
-        return PromptListInputHandler(syntax)
-        # if 'instruction' not in args:
-        #     return InstructionInputHandler()
-
-    def run(self, edit, prompt, endpoint, instruction=None):
-        # Check config and prompt
-        self.check_setup()
-
+        syntax = syntax.name if syntax else None
+        # ask user for a prompt to use
+        if not prompt:
+            sublime.set_timeout_async(
+                functools.partial(self.quick_panel_prompts, syntax=syntax))
+            return
+        # ask user for an endpont to use (if > 1)
+        if not endpoint:
+            sublime.set_timeout_async(
+                functools.partial(self.quick_panel_endpoints, prompt=prompt))
+            return
+        # ask the user for the required inputs
+        required_inputs = prompt.get('required_inputs', [])
+        required_inputs = [i.lower() for i in required_inputs if i != 'text']
+        for req_in in required_inputs:
+            if req_in not in kwargs:
+                sublime.set_timeout_async(functools.partial(self.input_panel,
+                        key=req_in, caption=req_in.title(), prompt=prompt,
+                        endpoint=endpoint, **kwargs))
+                return
+        # for each selected region, perform a request
         for region in self.view.sel():
-            text, pre, post = self.get_text(region)
+            text, pre, post = self.get_context(region, prompt)
             if len(text) < 1:
                 continue
-            # get the syntax
-            # TODO: this gets the syntax for the view, would be nice to get for the region
-            syntax = self.view.syntax()
-            syntax = syntax.name if syntax else ''
-            # run command in a thread
-            # TODO: for multiple regions, we may have multiple threads, bit `thread` will be overwritten
-            # thread = AsyncAssistant(server, endpoint, prompt, instruction, region, text, pre, post, syntax)
-            # thread.start()
-            # self.handle_thread(thread)
+            thread = AsyncAssistant(prompt, endpoint, region, text, pre, post, syntax, kwargs)
+            thread.start()
+            # TODO: hande_thread is blocking, so we don't take advantadge of threading here
+            self.handle_thread(thread)
 
 class AsyncAssistant(threading.Thread):
     """
     An async thread class for accessing the remote server API, and waiting for a response
     """
+    global settings
     running = False
     result = None
 
-    # TODO: pass syntax, filename, extension, ...
-    def __init__(self, server, endpoint, prompt, instruction, region, text, pre, post, syntax):
+    def __init__(self, prompt, endpoint, region, text, pre, post, syntax, kwargs):
         super().__init__()
-        self.server = server
         self.endpoint = endpoint
         self.prompt = prompt
-        self.instruction = instruction
         self.region = region
-        self.text = text
-        self.pre = pre
-        self.post = post
-        self.syntax = syntax
+        # prompt vars may add text
+        self.vars = self.prepare_vars(text, pre, post, syntax, kwargs)
+        self.headers = self.prepare_headers()
+        self.data = self.prepare_data()
+        self.conn = self.prepare_conn()
+
+    def prepare_vars(self, text, pre, post, syntax, kwargs):
+        prompt_vars = self.prompt.get('provided_vars', {})
+        vars_ = {
+            "text": text,
+            "pre": pre,
+            "post": post,
+            "syntax": syntax,
+            **kwargs
+        }
+        for k, v in prompt_vars.items():
+            prompt_vars[k] = sublime.expand_variables(v, vars_)
+        vars_.update(prompt_vars)
+        return vars_
+
+    def prepare_conn(self):
+        url = urlparse(self.endpoint.get('url'))
+        scheme = url.scheme
+        hostname = url.hostname
+        port = url.port
+        if not url.port:
+            port = 443 if scheme == 'https' else 80
+        if scheme == 'https':
+            return http.client.HTTPSConnection(hostname, port=port)
+        return http.client.HTTPConnection(hostname, port=port)
+
+    def prepare_headers(self):
+        template = self.endpoint.get('headers', {})
+        credentials = settings.credentials
+        headers = {}
+        for k, v in template.items():
+            headers[k] = sublime.expand_variables(v, credentials)
+        return headers
+
+    def prepare_data(self):
+        params = self.endpoint.get('params', {})
+        valid_params = self.endpoint.get('valid_params', {})
+        prompt_params = self.prompt.get('provided_params', {})
+        for k, v in prompt_params.items():
+            prompt_params[k] = sublime.expand_variables(v, self.vars)
+        params.update(prompt_params)
+        data = {}
+        for k, v in params.items():
+            if k in valid_params:  # TODO: valid params specifies type. We don't check yet.
+                data[k] = sublime.expand_variables(v, self.vars)
+        return data
 
     def run(self):
         self.running = True
@@ -182,131 +297,17 @@ class AsyncAssistant(threading.Thread):
         """
         Pass the given data to remote API, returning the response
         """
-        settings = sublime.load_settings('codex-ai.sublime-settings')
-        conn = http.client.HTTPSConnection('api.openai.com')
-        headers = {
-            'Authorization': "Bearer " + settings.get('open_ai_key', None),
-            'Content-Type': 'application/json'
-        }
         data = json.dumps(self.data)
-        conn.request('POST', '/v1/' + self.endpoint, data, headers)
-        response = conn.getresponse()
-        respone_dict = json.loads(response.read().decode())
-        return respone_dict
-        # if respone_dict.get('error', None):
-        #     raise ValueError(respone_dict['error'])
-        # else:
-        #     choice = respone_dict.get('choices', [{}])[0]
-        #     ai_text = choice['text']
-        #     useage = respone_dict['usage']['total_tokens']
-        #     sublime.status_message("Codex tokens used: " + str(useage))
-        # return ai_text
-
-# class ServerListInputHandler(sublime_plugin.ListInputHandler):
-#     global settings
-
-#     def __init__(self, initial_text):
-#         super().__init__()
-#         self._initial_text = initial_text
-
-#     def name(self):
-#         return "server"
-
-#     def placeholder(self):
-#         return "Select a server"
-
-#     def list_items(self):
-#         items = []
-#         for sid, server in settings.servers.items():
-#             items.append((server.get('name', sid.title()), sid))
-#         return items
-
-#     def description(self, value, text):
-#         return text
-
-#     def next_input(self, args):
-#         print(f"Server args: {args}")
-#         return EndpointListInputHandler()
-
-class PromptListInputHandler(sublime_plugin.ListInputHandler):
-    global settings
-
-    def __init__(self, syntax):
-        super().__init__()
-        self.syntax = syntax.lower()
-
-    def name(self):
-        return "prompt"
-
-    def placeholder(self):
-        return "Select a prompt"
-
-    def description(self, value, text):
-        return text
-
-    def list_items(self):
-        items = []
-        for pid, prompt in settings.prompts.items():
-            if self.syntax in prompt.get('required_syntax', [self.syntax,]):
-                items.append((prompt.get('name', pid.title()), pid))
-        return items
-
-    def next_input(self, args):
-        # if 'prompt' not in args:
-        #     return PromptListInputHandler(self.syntax)
-        prompt = settings.prompts[args['prompt']]
-        print(f"PromptInput args: {args}") # DEBUG
-        if 'instruction' in prompt.get('required_inputs', []):
-            return InstructionInputHandler()
-        else:
-            args.setdefault('instruction', '')
-            return EndpointListInputHandler()
-
-
-class InstructionInputHandler(sublime_plugin.TextInputHandler):
-    def name(self):
-        return "instruction"
-
-    def placeholder(self):
-        return "Instruction: i.e: 'translate to java' or 'add documentation'"
-
-    def preview(self, text):
-        # TODO: preview the rendered prompt
-        ...
-
-    def next_input(self, args):
-        prompt = settings.prompts.get(args.get('prompt', ''))
-        # if not prompt:
-        #     return PromptListInputHandler('')
-        req_ep = prompt.get('required_endpoints', [])
-        if req_ep and len(req_ep) <= 1:
-            args.setdefault('endpoint', prompt['required_endpoints'][0])
-            print(f"InstructionInput args: {args}") # DEBUG
-        else:
-            print(f"InstructionInput args: {args}") # DEBUG
-            return EndpointListInputHandler()
-
-class EndpointListInputHandler(sublime_plugin.ListInputHandler):
-    global settings
-
-    def name(self):
-        return "endpoint"
-
-    def placeholder(self):
-        return "Select an endpoint"
-
-    def list_items(self):
-        items = []
-        for eid, endpoint in settings.endpoints.items():
-            items.append((endpoint.get('name', eid.title()), eid))
-        return items
-
-    def description(self, value, text):
-        return text
-
-    def next_input(self, args):
-        print(f"EndpointInput args: {args}") # DEBUG
-        args.setdefault('instruction', '')
+        method = self.endpoint.get('method', 'POST')
+        resource = self.endpoint.get('resource', '')
+        print(method)
+        print(resource)
+        print(self.headers)
+        print(data)
+        self.conn.request(method, resource, data, self.headers)
+        response = self.conn.getresponse()
+        respone_data = json.loads(response.read().decode())
+        return respone_data
 
 class AssistantAiReplaceTextCommand(sublime_plugin.TextCommand):
     """
