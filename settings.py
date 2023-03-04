@@ -50,11 +50,11 @@ class AssistantAISettings:
         servers = {}
         servers_to_dismiss = []
         for sid, server in servers_all.items():
-            if not 'requires_credentials' in server:
+            if not 'required_credentials' in server:
                 servers[sid] = server  # this server requires no credentials
-            if isinstance(server['requires_credentials'], str):
-                server['requires_credentials'] = [server['requires_credentials'],]
-            for req_cred in server['requires_credentials']:
+            if isinstance(server['required_credentials'], str):
+                server['required_credentials'] = [server['required_credentials'],]
+            for req_cred in server['required_credentials']:
                 if req_cred not in self.credentials:
                     servers_to_dismiss.append(sid)
             if sid not in servers_to_dismiss:
@@ -192,11 +192,9 @@ class AssistantAISettings:
             if isinstance(parent_v, dict) and isinstance(prompt_v, dict):
                 new[key] = parent_v.update(prompt_v)
                 continue
-            # if not new[key]:
-            #     del(new[key])
         return new
 
-    def get_prompts_by_context(self, edit):
+    def get_prompts_by_available_context(self, available_context):
         '''
         Returns all usable prompts filtering by current edit state.
         Seleteced text, available context pre and/or post contents.
@@ -236,6 +234,14 @@ class AssistantAISettings:
 
     @staticmethod
     def merge_dicts(old, new) -> dict:
+        """
+        This static method merges two dictionaries, old and new, into a single dictionary new where the values of the keys
+        in old are updated with the corresponding values in new if the keys are present in both dictionaries.
+
+        :param old: dictionary containing old values
+        :param new: dictionary containing new values
+        :return: merged dictionary with updated values
+        """
         for k, v in old.items():
             if k in new:
                 v.update(new[k])

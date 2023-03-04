@@ -59,22 +59,29 @@ class AssistantAiCommand(sublime_plugin.TextCommand):
             sublime.status_message("Something is wrong with remote server - aborting")
             return
 
-        # TODO: make this configurable
-        ai_text = ''
-        if thread.result.get('error', None):
-            raise ValueError(thread.result['error'])
-        else:
-            choice = thread.result.get('choices', [{}])[0]
-            ai_text = choice['text']
-            useage = thread.result['usage']['total_tokens']
-            sublime.status_message("Codex tokens used: " + str(useage))
+        error = thread.result.get('error')
+        output = thread.result.get('output')
+        if error:
+            print(error)
+        if output:
+            # TODO: honor prompt command to run
+            self.view.run_command('assistant_ai_replace_text', {
+                "region": [thread.region.begin(), thread.region.end()],
+                "text": output
+            })
+        print('------------------')
+        print(thread.result.get('response'))
+        print('------------------')
+        print(output)
+        print('------------------')
 
-        # TODO: honor prompt command to run
-        self.view.run_command('assistant_ai_replace_text', {
-            "region": [thread.region.begin(), thread.region.end()],
-            "text": ai_text  # TODO: extract the result text from this response object
-        })
 
+    def get_avialble_context(self, region):
+        # TODO: return num lines and chars for pre of 0 and post of -1 in all regions
+        for region in self.view.sel():
+            ...
+
+        return {}
 
     def get_context(self, region, prompt):
         """
@@ -133,13 +140,15 @@ class AssistantAiPromptCommand(AssistantAiCommand):
                 "prompt": prompt
             })
         prompts = settings.get_prompts_by_syntax(syntax)
-        # TODO: filter by get_prompts_by_context
+        # TODO: filter by get_prompts_by_available_context
         icon = "♡"
         ids = []
         items = []
         for p, prompt in prompts.items():
             name = prompt.get('name', prompt.get('id', '').replace('_', ' ').title())
+            name = sublime.expand_variables(name, {'syntax': syntax})
             desc = prompt.get('description', '')
+            desc = sublime.expand_variables(desc, {'syntax': syntax})
             ids.append(p)
             items.append([f"{icon} {name}", f"{desc} [{p.upper()}]"])
         win = self.view.window()
@@ -243,7 +252,20 @@ class AsyncAssistant(threading.Thread):
         self.conn = self.prepare_conn()
 
     def prepare_vars(self, text, pre, post, syntax, kwargs):
-        prompt_vars = self.prompt.get('provided_vars', {})
+        """
+        Prepares variables to be used in a prompt.
+
+        Args:
+            text (str): The text to be displayed in the prompt.
+            pre (str): The pre-text before text.
+            post (str): The post-text after text.
+            syntax (str): The syntax of text.
+            kwargs (dict): Any additional keyword arguments to be used.
+
+        Returns:
+            dict: The updated dictionary of variables.
+        """
+        prompt_vars = self.prompt.get('vars', {})
         vars_ = {
             "text": text,
             "pre": pre,
@@ -257,6 +279,13 @@ class AsyncAssistant(threading.Thread):
         return vars_
 
     def prepare_conn(self):
+        """
+        Prepares the HTTP connection based on the endpoint URL.
+
+        Returns:
+        http.client.HTTPConnection or http.client.HTTPSConnection: The suitable HTTP connection to be used for
+        sending requests to the endpoint URL.
+        """
         url = urlparse(self.endpoint.get('url'))
         scheme = url.scheme
         hostname = url.hostname
@@ -276,14 +305,15 @@ class AsyncAssistant(threading.Thread):
         return headers
 
     def prepare_data(self):
-        params = self.endpoint.get('params', {})
-        valid_params = self.endpoint.get('valid_params', {})
-        prompt_params = self.prompt.get('provided_params', {})
-        for k, v in prompt_params.items():
-            prompt_params[k] = sublime.expand_variables(v, self.vars)
-        params.update(prompt_params)
-        data = {}
+        request = self.endpoint.get('request', {})
+        params = self.prompt.get('params', {})
         for k, v in params.items():
+            params[k] = sublime.expand_variables(v, self.vars)
+        request.update(params)
+
+        data = {}
+        valid_params = self.endpoint.get('valid_params', {})
+        for k, v in request.items():
             if k in valid_params:  # TODO: valid params specifies type. We don't check yet.
                 data[k] = sublime.expand_variables(v, self.vars)
         return data
@@ -300,14 +330,55 @@ class AsyncAssistant(threading.Thread):
         data = json.dumps(self.data)
         method = self.endpoint.get('method', 'POST')
         resource = self.endpoint.get('resource', '')
-        print(method)
-        print(resource)
-        print(self.headers)
+        # print(method)
+        # print(resource)
+        # print(self.headers)
         print(data)
         self.conn.request(method, resource, data, self.headers)
         response = self.conn.getresponse()
-        respone_data = json.loads(response.read().decode())
-        return respone_data
+        return self.parse_response(json.loads(response.read().decode()))
+
+    def parse_response(self, data):
+        """
+        This function takes in a dictionary 'data' and parses it according to a template defined in 'self.endpoint'.
+        It returns a dictionary with keys corresponding to the keys in the template and corresponding values either from the parsed 'data'
+        or an error message if any error occurred while parsing
+        """
+        template = self.endpoint.get('response', {})
+        response = {}
+        for k, path in template.items():
+            item = self.get_item(data, str(path))
+            if not item:
+                response['error'] = f"Error getting response item {k} in '{path}'"
+            response[k] = item
+        response['response'] = data
+        return response
+
+    def get_item(self, data, path):
+        """Returns the value located at the end of a given path within a nested data structure.
+
+        Args:
+            data (list/dict/tuple): The nested data structure to search for the value.
+            path (str): The path to the desired value within the data structure, separated by forward slashes.
+
+        Returns:
+            The value located at the end of the path within the data structure, or None if not found.
+        """
+        if not path:
+            return data
+        parts = path.split('/')
+        if len(parts) == 0:
+            return data
+        if not isinstance(data, (list, dict, tuple)):
+            return data
+        part = parts.pop(0)
+        if part.isnumeric() and isinstance(data, (list, tuple)):
+            part = int(part)
+            if len(data) > part:
+                return self.get_item(data[part], '/'.join(parts))
+        elif isinstance(data, dict):
+            return self.get_item(data.get(part), '/'.join(parts))
+        return None
 
 class AssistantAiReplaceTextCommand(sublime_plugin.TextCommand):
     """

@@ -19,7 +19,7 @@
 	"prompts_default": [
 		{
 			// package provided prompts must have an id, user provided promps will self-generate one
-			"id": "continue_coding",
+			"id": "continue_text",
 
 			// import an existing prompt and update all main keys with this specification
 			// you can specify the string of another prompt_id or an object with fine tune specs
@@ -36,9 +36,15 @@
 			},
 
 			// how the user will see this prompt
-			"name": "Continue coding",
-			"description": "Given a selected text, continue coding from there.",
+			"name": "Continue text",
+			"description": "Given a selected text, continue writing from there.",
 			// required inputs: text = selection, instruction will be prompted to user
+			"inputs": {
+				"language": {
+					"type": "array",
+					"items": ["ES", "EN"]
+				}
+			},
 			"required_inputs": ["text"], // text, instruction
 			// required context relative to selection or cursor
 			"required_context": {
@@ -50,7 +56,8 @@
 			//"required_syntax": ["python"], // default: null = any
 			// enable this prompt only when those endpoints are available
 			"required_endpoints": [ // default: null = any
-				"openai/completions"
+				"openai/completions",
+				"openai/chat_completions"
 			],
 			// requires other prompt responses that will be stored in variables
 			"required_prompt_responses": {
@@ -72,43 +79,74 @@
 			// - context (pre, post)
 			// - syntax
 			// - prompt responses in variables (as specified in prompt_responses)
-			"provided_vars": {
+			"vars": {
 				"text": "${text}"
 			},
-			"provided_params": {
+			"params": {
 				"temperature": 1.0,
-				"max_tokens": 512,
+				"max_tokens": 1800,
 			},
 			// specify what to do with the response
 			// replace, append, output, create, insert(placeholder)
-			"command": "append",
-			// for the insert command, specify the placeholder to find/replace the output
-			"insert_placeholder": "${output}", // for insert command, set the placeholder to replace with the output
+			"command": {
+				"cmd": "replace",
+				// "placeholder": "XXX",
+			},
 		},
 		{
-			"id": "ask_change_code",
-			"name": "Ask a change to code",
-			"description": "Give an instruction to change the selected code.",
+			"id": "edit_text",
+			"name": "Edit selected text",
+			"description": "Give an instruction to change the selected text.",
 			"required_inputs": ["text", "instruction"],
 			"required_endpoints": ["openai/edits"],
-			"provided_vars": {
+			"vars": {
 				"text": "${text}",
 				"instruction": "${instruction}",
 			},
-			"provided_params": {
+			"params": {
 				"temperature": 1.0,
 			},
-			"command": "replace", // append, insert(placeholder), output
+			"command": "replace",
 		},
 		{
-			"id": "continue_coding_ex2",
-			"import": "continue_coding_ex1",
-			"name": "Continue coding extended 2",
+			"id": "ask_change_code",
+			"name": "Ask a change to ${syntax}",
+			"description": "Give an instruction to change the selected ${syntax}.",
+			"required_inputs": ["text", "instruction"],
+			"required_endpoints": ["openai/chat_completions"],
+			"vars": {
+				"text": "${text}",
+				"instruction": "${instruction}",
+			},
+			"params": {
+				"messages": [
+					{
+						"role": "user",
+						"content": "The following is a portion of ${syntax}.\n${instruction}.\nReturn only the edited ${syntax} text:\n\n${text}",
+					}
+				],
+			},
+			"command": "replace",
 		},
 		{
-			"id": "continue_coding_ex1",
-			"import": "continue_coding",
-			"name": "Continue coding extended",
+			"id": "python_add_docstring",
+			"name": "Add docstring",
+			"description": "Add docstring to selected ${syntax} function.",
+			"required_inputs": ["text"],
+			"required_endpoints": ["openai/chat_completions"],
+			"required_syntax": ["python"], // default: null = any
+			"vars": {
+				"text": "${text}",
+			},
+			"params": {
+				"messages": [
+					{
+						"role": "user",
+						"content": "Add the docstring to the following ${syntax} code following theses rules:\n* Preserve indentation.\n* Return only the edited ${syntax} code.\n* Do not alter the code.\n\n${text}",
+					}
+				],
+			},
+			"command": "replace",
 		},
 	],
 
@@ -117,7 +155,7 @@
 		"openai": {
 			"name": "OpenAI",
 			"url": "https://api.openai.com:443",
-			"requires_credentials": [
+			"required_credentials": [
 				"openai_api_key"
 			],
 			"headers": {
@@ -146,10 +184,49 @@
 						"frequency_penalty": "integer",
 						"best_of": "integer",
 					},
-					"params": {
-						"model": "text-davinci-003",
+					"request": {
+						"model": "text-davinci-001",
 						"prompt": "${text}",
-					}
+					},
+					"response": { // error and output are required
+						"error": "error",
+						"output": "choices/0/text",
+					},
+				},
+				"chat_completions": {
+					"name": "Chat Completions",
+					"method": "POST",
+					"resource": "/v1/chat/completions",
+					"required_vars": ["text"],
+					"valid_params": {
+						"model": "string",
+						"messages": "array",
+						"max_tokens": "integer",
+						"temperature": "float",
+						"top_p": "integer",
+						"n": "integer",
+						"suffix": "string",
+						"stream": "boolean",
+						"logprobs": "boolean",
+						"echo": "boolean",
+						"stop": "string",
+						"presence_penalty": "integer",
+						"frequency_penalty": "integer",
+						"best_of": "integer",
+					},
+					"request": {
+						"model": "gpt-3.5-turbo",
+						"messages": [
+							{
+								"role": "user",
+								"content": "${text}",
+							}
+						],
+					},
+					"response": { // error and output are required
+						"error": "error",
+						"output": "choices/0/message/content",
+					},
 				},
 				"edits": {
 					"name": "Edits",
@@ -164,18 +241,22 @@
 						"top_p": "integer",
 						"n": "integer",
 					},
-					"params": {
+					"request": {
 						"model": "text-davinci-edit-001",
 						"input": "${text}",
 						"instruction": "${instruction}",
-					}
+					},
+					"response": { // error and output are required
+						"error": "error",
+						"output": "choices/0/text",
+					},
 				},
 			}
 		},
 		"askcodi": {
 			"name": "AskCodi",
 			"url": "https://us-central1-askcodi-1a402.cloudfunctions.net",
-			"requires_credentials": [
+			"required_credentials": [
 				"ask_codi_key",
 				"ask_codi_device_id",
 				"ask_codi_fast_token",
