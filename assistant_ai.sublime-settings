@@ -89,8 +89,13 @@
 			// specify what to do with the response
 			// replace, append, output, create, insert(placeholder)
 			"command": {
-				"cmd": "replace",
+				"cmd": "append",
 				// "placeholder": "XXX",
+				// "strip_output": true,
+				// "syntax": "Markdown",
+				// "new_line_before": true,
+				// "new_line_after": true,
+				"preserve_indentation": true,
 			},
 		},
 		{
@@ -115,38 +120,52 @@
 			"required_inputs": ["text", "instruction"],
 			"required_endpoints": ["openai/chat_completions"],
 			"vars": {
-				"text": "${text}",
-				"instruction": "${instruction}",
-			},
-			"params": {
-				"messages": [
-					{
-						"role": "user",
-						"content": "The following is a portion of ${syntax}.\n${instruction}.\nReturn only the edited ${syntax} text:\n\n${text}",
-					}
+				"text": [
+					"The following is a portion of ${syntax}.",
+					"Make these changes:",
+					"${instruction}.",
+					"",
+					"Return only the edited ${syntax} text:",
+					"",
+					"${text}",
 				],
 			},
 			"command": "replace",
 		},
 		{
 			"id": "python_add_docstring",
+			"import": {
+				"from": "ask_change_code",
+				"required_inputs": "replace",
+			},
 			"name": "Add docstring",
 			"description": "Add docstring to selected ${syntax} function.",
 			"required_inputs": ["text"],
-			"required_endpoints": ["openai/chat_completions"],
-			"required_syntax": ["python"], // default: null = any
+			"required_syntax": ["python"],
 			"vars": {
-				"text": "${text}",
-			},
-			"params": {
-				"messages": [
-					{
-						"role": "user",
-						"content": "Add the docstring to the following ${syntax} code following theses rules:\n* Preserve indentation.\n* Return only the edited ${syntax} code.\n* Do not alter the code.\n\n${text}",
-					}
+				"text": [
+					"Add the docstring to the following ${syntax} code following theses rules:",
+					"* Return only the edited ${syntax} code.",
+					"* Do not alter the code.",
+					"",
+					"${text}",
 				],
 			},
-			"command": "replace",
+		},
+		{
+			"id": "python_add_comments",
+			"import": "python_add_docstring",
+			"name": "Add comments",
+			"description": "Add comments to selected ${syntax} code.",
+			"vars": {
+				"text": [
+					"Comment the lines to the following ${syntax} code following theses rules:",
+					"* Return only the edited ${syntax} code.",
+					"* Do not alter the code.",
+					"",
+					"${text}",
+				],
+			},
 		},
 	],
 
@@ -160,7 +179,8 @@
 			],
 			"headers": {
 				"Authorization": "Bearer ${openai_api_key}",
-				"Content-Type": "application/json"
+				"Content-Type": "application/json",
+				"cache-control": "no-cache",
 			},
 			"endpoints": {
 				"completions": {

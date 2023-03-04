@@ -1,14 +1,12 @@
-import json
-import threading
 import functools
-import http.client
-from urllib.parse import urlparse
 import sublime
 import sublime_plugin
 
 # The global scope ensures that the settings can
 # be easily accessed from within all the classes.
-from .settings import AssistantAISettings
+from .assistant_settings import AssistantAISettings
+from .assistant_thread import AssistantThread
+
 settings = AssistantAISettings()
 VERSION_ASSISTANT_AI = "0.0.1"
 VERSION_ST = int(sublime.version())
@@ -28,53 +26,50 @@ def plugin_unloaded():
     global settings
     settings.config.clear_on_change('assistant_ai')
 
-class AssistantAiCommand(sublime_plugin.TextCommand):
-    global settings
+class AssistantAiTextCommand(sublime_plugin.TextCommand):
+    """
+    This class represents a Text Command in Sublime Text that with convenient methods.
 
-    def handle_thread(self, thread, seconds=0):
+    Args:
+    - sublime_plugin (module): Allows for creating plugins for Sublime Text.
+
+    Methods:
+    - get_region_indentation(region): Returns the indentation of a given region.
+    - indent_text(text, indent): Indents a given text.
+    - get_context(region, prompt): Given a region, return the selected text, and context pre and post such text.
+    """
+    def get_region_indentation(self, region):
         """
-        Recursive method for checking in on the async API fetcher
+        Returns the indentation of a region.
+
+        Args:
+        - region (tuple): A tuple containing the start and end points of a given region.
+
+        Returns:
+        - str: The indentation of the given region.
         """
-        max_seconds = settings.get('max_seconds', 60)
+        lines = self.view.split_by_newlines(sublime.Region(*region))
+        if not lines:
+            return ''
+        text = self.view.substr(sublime.Region(*lines[0]))
+        indent = ''
+        for c in text:
+            if c in (' \t'):
+                indent += c
+            else:
+                break
+        return indent
 
-        # If we ran out of time, let user know, stop checking on the thread
-        if seconds > max_seconds:
-            msg = f"Query ran out of time! {max_seconds}s"
-            sublime.status_message(msg)
-            return
-
-        # While the thread is running, show them some feedback,
-        # and keep checking on the thread
-        if thread.running:
-            msg = "Querying remote AI server, one moment... ({}/{}s)".format(
-                seconds, max_seconds)
-            sublime.status_message(msg)
-            # Wait a second, then check on it again
-            sublime.set_timeout(lambda:
-                self.handle_thread(thread, seconds + 1), 1000)
-            return
-
-        # If we finished with no result, something is wrong
-        if not thread.result:
-            sublime.status_message("Something is wrong with remote server - aborting")
-            return
-
-        error = thread.result.get('error')
-        output = thread.result.get('output')
-        if error:
-            print(error)
-        if output:
-            # TODO: honor prompt command to run
-            self.view.run_command('assistant_ai_replace_text', {
-                "region": [thread.region.begin(), thread.region.end()],
-                "text": output
-            })
-        print('------------------')
-        print(thread.result.get('response'))
-        print('------------------')
-        print(output)
-        print('------------------')
-
+    def indent_text(self, text, indent):
+        """
+        This function takes in a string and an integer and returns a modified string.
+        The string is split by the newline character and every line is then indented by
+        the amount specified in the integer. The modified string is then returned.
+        """
+        new = ''
+        for line in text.split('\n'):
+            new += indent + line + "\n"
+        return new
 
     def get_avialble_context(self, region):
         # TODO: return num lines and chars for pre of 0 and post of -1 in all regions
@@ -126,11 +121,69 @@ class AssistantAiCommand(sublime_plugin.TextCommand):
                 post = self.view.substr(reg_post)
         return text, pre, post
 
-class AssistantAiPromptCommand(AssistantAiCommand):
+class AssistantAiCommand(AssistantAiTextCommand):
     global settings
 
+    def handle_thread(self, thread, seconds=0):
+        """
+        Recursive method for checking in on the async API fetcher
+        """
+        max_seconds = settings.get('max_seconds', 60)
+
+        # If we ran out of time, let user know, stop checking on the thread
+        if seconds > max_seconds:
+            msg = f"Query ran out of time! {max_seconds}s"
+            sublime.status_message(msg)
+            return
+
+        # While the thread is running, show them some feedback,
+        # and keep checking on the thread
+        if thread.running:
+            msg = "Querying remote AI server, one moment... ({}/{}s)".format(
+                seconds, max_seconds)
+            sublime.status_message(msg)
+            # Wait a second, then check on it again
+            sublime.set_timeout(lambda:
+                self.handle_thread(thread, seconds + 1), 1000)
+            return
+
+        # If we finished with no result, something is wrong
+        if not thread.result:
+            sublime.status_message("Something is wrong with remote server - aborting")
+            return
+
+        error = thread.result.get('error')
+        output = thread.result.get('output')
+        if error:
+            self.view.set_status(error)
+        if output:
+            command = thread.prompt.get('command', {'cmd':'replace'})
+            if isinstance(command, str):
+                command = {'cmd': command}
+            # if the command spec from prompt forces a syntax, take that
+            # otherwise, use the prompt var, or 'Markdown'
+            if 'syntax' not in command:
+                command['syntax'] = thread.vars.get('syntax', 'Markdown')
+            #
+            cmds_map = {
+                'replace': 'assistant_ai_replace_text',
+                'append': 'assistant_ai_append_text',
+                'insert': 'assistant_ai_insert_text',
+                'output': 'assistant_ai_output_panel',
+                'create': 'assistant_ai_create_view',
+            }
+            cmd = cmds_map.get(command.get('cmd', 'replace'))
+            if cmd:
+                self.view.run_command(cmd, {
+                    "region": [thread.region.begin(), thread.region.end()],
+                    "text": output,
+                    "kwargs": command
+                })
+
     def quick_panel_prompts(self, syntax=None):
-        """Display a quick panel with all available prompts."""
+        """
+        Display a quick panel with all available prompts.
+        """
         def on_select(index):
             if index < 0:
                 return
@@ -156,7 +209,10 @@ class AssistantAiPromptCommand(AssistantAiCommand):
             win.show_quick_panel(items=items, on_select=on_select)
 
     def quick_panel_endpoints(self, prompt):
-        """Display a quick panel with all available prompts."""
+        """
+        Display a quick panel with all available endpoints for a given prompt.
+        Automatically select the endpoint if only one is available.
+        """
         def on_select(index):
             if index < 0:
                 return
@@ -184,9 +240,11 @@ class AssistantAiPromptCommand(AssistantAiCommand):
             if win:
                 win.show_quick_panel(items=items, on_select=on_select)
 
+    # TODO: should accept req_in, caption, and list of options
     def input_panel(self, key, caption, prompt, endpoint, **kwargs):
-        """Display a input panel asking the user for the instruction."""
-        # TODO: should accept req_in, caption, and list of options
+        """
+        Display a input panel asking the user for the instruction.
+        """
         def on_done(text):
             self.view.run_command('assistant_ai_prompt', {
                 "prompt": prompt,
@@ -198,6 +256,9 @@ class AssistantAiPromptCommand(AssistantAiCommand):
         if win:
             win.show_input_panel(caption=caption, initial_text="",
                 on_done=on_done, on_change=None, on_cancel=None)
+
+class AssistantAiPromptCommand(AssistantAiCommand):
+    global settings
 
     def run(self, edit, prompt=None, endpoint=None, **kwargs):
         # get the syntax
@@ -218,6 +279,7 @@ class AssistantAiPromptCommand(AssistantAiCommand):
         required_inputs = [i.lower() for i in required_inputs if i != 'text']
         for req_in in required_inputs:
             if req_in not in kwargs:
+                # TODO: seatch an input spec in the prompt to configure the input panel
                 sublime.set_timeout_async(functools.partial(self.input_panel,
                         key=req_in, caption=req_in.title(), prompt=prompt,
                         endpoint=endpoint, **kwargs))
@@ -227,164 +289,153 @@ class AssistantAiPromptCommand(AssistantAiCommand):
             text, pre, post = self.get_context(region, prompt)
             if len(text) < 1:
                 continue
-            thread = AsyncAssistant(prompt, endpoint, region, text, pre, post, syntax, kwargs)
+            # TODO: hande_thread is not blocking, so we don't take advantadge of multi selection here.
+            # BUG: when user selects multi text, the thread is overwritten. Complex fix ahead!
+            thread = AssistantThread(settings, prompt, endpoint, region, text, pre, post, syntax, kwargs)
             thread.start()
-            # TODO: hande_thread is blocking, so we don't take advantadge of threading here
             self.handle_thread(thread)
 
-class AsyncAssistant(threading.Thread):
-    """
-    An async thread class for accessing the remote server API, and waiting for a response
-    """
-    global settings
-    running = False
-    result = None
-
-    def __init__(self, prompt, endpoint, region, text, pre, post, syntax, kwargs):
-        super().__init__()
-        self.endpoint = endpoint
-        self.prompt = prompt
-        self.region = region
-        # prompt vars may add text
-        self.vars = self.prepare_vars(text, pre, post, syntax, kwargs)
-        self.headers = self.prepare_headers()
-        self.data = self.prepare_data()
-        self.conn = self.prepare_conn()
-
-    def prepare_vars(self, text, pre, post, syntax, kwargs):
+class AssistantAiReplaceTextCommand(AssistantAiTextCommand):
+    def run(self, edit, region, text, kwargs):
         """
-        Prepares variables to be used in a prompt.
+        Replace the text of a region in a Sublime Text view.
 
-        Args:
-            text (str): The text to be displayed in the prompt.
-            pre (str): The pre-text before text.
-            post (str): The post-text after text.
-            syntax (str): The syntax of text.
-            kwargs (dict): Any additional keyword arguments to be used.
+        Parameters:
+        edit (Object) : An edit object created to track changes in the view.
+        region (tuple) : A tuple containing (start, end) positions of the region to be replaced.
+        text (str) : The new text to replace into the region.
+        kwargs (dict) : Optional keyword arguments to customize the replacement process:
+            - strip_output (bool): Whether or not to remove leading/trailing white space from the new text.
+            - new_line_before (bool): Whether or not to add a new line before the new text.
+            - new_line_after (bool): Whether or not to add a new line after the new text.
+            - preserve_indentation (bool): Whether or not to preserve the indentation of the region after replacement.
 
         Returns:
-            dict: The updated dictionary of variables.
+        None.
         """
-        prompt_vars = self.prompt.get('vars', {})
-        vars_ = {
-            "text": text,
-            "pre": pre,
-            "post": post,
-            "syntax": syntax,
-            **kwargs
-        }
-        for k, v in prompt_vars.items():
-            prompt_vars[k] = sublime.expand_variables(v, vars_)
-        vars_.update(prompt_vars)
-        return vars_
-
-    def prepare_conn(self):
-        """
-        Prepares the HTTP connection based on the endpoint URL.
-
-        Returns:
-        http.client.HTTPConnection or http.client.HTTPSConnection: The suitable HTTP connection to be used for
-        sending requests to the endpoint URL.
-        """
-        url = urlparse(self.endpoint.get('url'))
-        scheme = url.scheme
-        hostname = url.hostname
-        port = url.port
-        if not url.port:
-            port = 443 if scheme == 'https' else 80
-        if scheme == 'https':
-            return http.client.HTTPSConnection(hostname, port=port)
-        return http.client.HTTPConnection(hostname, port=port)
-
-    def prepare_headers(self):
-        template = self.endpoint.get('headers', {})
-        credentials = settings.credentials
-        headers = {}
-        for k, v in template.items():
-            headers[k] = sublime.expand_variables(v, credentials)
-        return headers
-
-    def prepare_data(self):
-        request = self.endpoint.get('request', {})
-        params = self.prompt.get('params', {})
-        for k, v in params.items():
-            params[k] = sublime.expand_variables(v, self.vars)
-        request.update(params)
-
-        data = {}
-        valid_params = self.endpoint.get('valid_params', {})
-        for k, v in request.items():
-            if k in valid_params:  # TODO: valid params specifies type. We don't check yet.
-                data[k] = sublime.expand_variables(v, self.vars)
-        return data
-
-    def run(self):
-        self.running = True
-        self.result = self.get_response()
-        self.running = False
-
-    def get_response(self):
-        """
-        Pass the given data to remote API, returning the response
-        """
-        data = json.dumps(self.data)
-        method = self.endpoint.get('method', 'POST')
-        resource = self.endpoint.get('resource', '')
-        # print(method)
-        # print(resource)
-        # print(self.headers)
-        print(data)
-        self.conn.request(method, resource, data, self.headers)
-        response = self.conn.getresponse()
-        return self.parse_response(json.loads(response.read().decode()))
-
-    def parse_response(self, data):
-        """
-        This function takes in a dictionary 'data' and parses it according to a template defined in 'self.endpoint'.
-        It returns a dictionary with keys corresponding to the keys in the template and corresponding values either from the parsed 'data'
-        or an error message if any error occurred while parsing
-        """
-        template = self.endpoint.get('response', {})
-        response = {}
-        for k, path in template.items():
-            item = self.get_item(data, str(path))
-            if not item:
-                response['error'] = f"Error getting response item {k} in '{path}'"
-            response[k] = item
-        response['response'] = data
-        return response
-
-    def get_item(self, data, path):
-        """Returns the value located at the end of a given path within a nested data structure.
-
-        Args:
-            data (list/dict/tuple): The nested data structure to search for the value.
-            path (str): The path to the desired value within the data structure, separated by forward slashes.
-
-        Returns:
-            The value located at the end of the path within the data structure, or None if not found.
-        """
-        if not path:
-            return data
-        parts = path.split('/')
-        if len(parts) == 0:
-            return data
-        if not isinstance(data, (list, dict, tuple)):
-            return data
-        part = parts.pop(0)
-        if part.isnumeric() and isinstance(data, (list, tuple)):
-            part = int(part)
-            if len(data) > part:
-                return self.get_item(data[part], '/'.join(parts))
-        elif isinstance(data, dict):
-            return self.get_item(data.get(part), '/'.join(parts))
-        return None
-
-class AssistantAiReplaceTextCommand(sublime_plugin.TextCommand):
-    """
-    Simple command for inserting text
-    https://forum.sublimetext.com/t/solved-st3-edit-object-outside-run-method-has-return-how-to/19011/7
-    """
-    def run(self, edit, region, text):
+        if kwargs.get('strip_output', True):
+            text = text.strip()
+        if kwargs.get('new_line_before', False):
+            text = "\n" + text
+        if kwargs.get('new_line_after', False):
+            text = text + "\n"
+        if kwargs.get('preserve_indentation', True):
+            indent = self.get_region_indentation(region)
+            text = self.indent_text(text, indent)
         region = sublime.Region(*region)
         self.view.replace(edit, region, text)
+
+class AssistantAiAppendTextCommand(AssistantAiTextCommand):
+    def run(self, edit, region, text, kwargs):
+        """
+        Inserts `text` into the current view at the end of `region`.
+
+        Args:
+        - edit (sublime.Edit): The edit token representing this modification.
+        - region (tuple): A tuple containing two integers that represents a region of text in the view.
+        - text (str): The text to insert.
+        - kwargs (dict): A dictionary that contains the options for text insertion.
+
+        Returns:
+        - None
+
+        Options:
+        - strip_output (bool, default=True): Whether to strip leading/trailing whitespace from `text`.
+        - new_line_before (bool, default=True): Whether to insert a new line before `text`.
+        - new_line_after (bool, default=True): Whether to insert a new line after `text`.
+        - preserve_indentation (bool, default=True): Whether to preserve the indentation of `region`.
+
+        """
+        if kwargs.get('strip_output', True):
+            text = text.strip()
+        if kwargs.get('new_line_before', True):
+            text = "\n" + text
+        if kwargs.get('new_line_after', True):
+            text = text + "\n"
+        if kwargs.get('preserve_indentation', True):
+            indent = self.get_region_indentation(region)
+            text = self.indent_text(text, indent)
+        region = sublime.Region(*region)
+        self.view.insert(edit, region.end(), text)
+
+class AssistantAiInsertTextCommand(AssistantAiTextCommand):
+    def run(self, edit, region, text, kwargs):
+        """
+        Replaces a given placeholder with the given text within the specified region.
+
+        Args:
+        - edit: a reference to the edit object from Sublime Text.
+        - region: the region of text where the placeholder will be replaced.
+        - text: the text that replaces the placeholder.
+        - kwargs: a dictionary of keyword arguments that can contain 'strip_output' and 'placeholder' keys.
+
+        Returns:
+        - None
+
+        """
+        if kwargs.get('strip_output', True):
+            text = text.strip()
+        region = sublime.Region(*region)
+        placeholder = kwargs.get('placeholder', 'XXX')
+        match = self.view.find(placeholder, region.begin())
+        if region.contains(match.begin()) and region.contains(match.end()):
+            self.view.replace(edit, match, text)
+
+class AssistantAiOutputPanelCommand(AssistantAiTextCommand):
+    def run(self, edit, region, text, kwargs):
+        """
+        Display output text in a new output panel.
+
+        Params:
+        - edit: The sublime edit object.
+        - region: The region object.
+        - text: The text to display.
+        - kwargs: The optional arguments with 2 keys:
+                * strip_output: A boolean which determines whether or not to strip the trailing or leading white spaces.
+                * syntax: A string which determines the syntax of the text, defaulting to Markdown.
+        """
+        if kwargs.get('strip_output', True):
+            text = text.strip()
+        syntax = kwargs.get('syntax', 'Markdown')
+        name = 'assistant_ai'
+        self.output_panel = self.view.window().create_output_panel(name)
+        syntax_list = sublime.find_syntax_by_name(syntax)
+        if len(syntax_list) > 0:
+            self.output_panel.assign_syntax(syntax_list[0])
+        self.view.window().run_command("show_panel", {"panel": f"output.{name}"})
+        self.output_panel.run_command('append', {'characters': text})
+
+class AssistantAiCreateViewCommand(AssistantAiTextCommand):
+    def run(self, edit, region, text, kwargs):
+        """
+        Create a new view and assign the appropriate syntax to it. Add the output provided to the new view.
+
+        Parameters:
+        edit: This is a required argument that specifies an Edit object that represents a sequence of operations that can be
+        applied to the buffer of the text view.
+
+        region: This argument specifies the selected region in the current view. This value is not used in this function.
+
+        text: This argument contains the output text that needs to be added to the newly created view.
+
+        kwargs: This is a dictionary argument that may contain optional parameters for this function. The following parameters
+        are supported:
+
+            strip_output: (bool) If `True`, the output text will be stripped of any leading and trailing whitespace before it
+            is added to the new view. The default value is `True`.
+
+            syntax: (str) This argument specifies the syntax highlighting to be used for the new view. The default value
+            is `'Markdown'`.
+        """
+        if kwargs.get('strip_output', True):
+            text = text.strip()
+        syntax = kwargs.get('syntax', 'Markdown')
+        # Create a new view
+        new_view = self.view.window().new_file()
+        # set a proper syntax
+        syntax_list = sublime.find_syntax_by_name(syntax)
+        if len(syntax_list) > 0:
+            new_view.assign_syntax(syntax_list[0])
+        # add the output
+        new_view.run_command("append", {"characters": text})
+
