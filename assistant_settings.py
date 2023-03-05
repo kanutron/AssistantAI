@@ -1,102 +1,121 @@
 import sublime
 import uuid
 
+PKG_NAME = 'AssistantAI'
 SETTINGS_FILE = 'assistant_ai.sublime-settings'
+PKG_SETTINGS_FILE_BLOB = 'assistant_ai*.sublime-settings'
 
 class AssistantAISettings:
     '''
     Handles all AssistantAI settings.
     '''
-    config: sublime.Settings
-    credentials = {}
-    servers = {}
     endpoints = {}
     prompts = {}
 
     def load(self):
-        self.load_config()
-        self.load_configured_credentials()
-        self.load_enabled_servers()
-        self.load_enabled_endpoints()
-        self.load_usable_prompts()
+        """
+        Loads settings and prompts from all packages that provides AssistantAI settings.
 
-    def load_config(self):
-        self.config = sublime.load_settings(SETTINGS_FILE)
+        Each package provided endpoints can only use credentials from its own settings files.
 
-    def load_configured_credentials(self):
-        '''
-        Loads all configured credentials. User must speicify those credentials.
-        If they are not specified, servers that requires that credentials will
-        be dismissed.
-        '''
-        creds_all = self.get('credentials', {})
+        :return: None
+        """
+        # Get all settings from all packages that provides AssistantAI settings.
+        files = set()
+        for resource in sublime.find_resources(PKG_SETTINGS_FILE_BLOB):
+            files.add(resource.split('/')[-1])
+        # load endpoints for each settings file.
+        for file in files:
+            settings = self.load_settings_from(file)
+            credentials = self.load_credentials_from(settings)
+            servers = self.load_servers_from(settings, credentials)
+            # update endpoints
+            self.endpoints.update(self.load_endpoints_from(servers, credentials))
+        # load prompts now that we have all end points loaded.
+        for file in files:
+            settings = self.load_settings_from(file)
+            self.prompts.update(self.load_prompts_from(settings))
+        self.prompts = self.process_prompts_import(self.prompts)
+
+    def load_settings_from(self, file):
+        settings = sublime.load_settings(file)
+        return settings
+
+    def load_credentials_from(self, settings):
+        creds_all = settings.get('credentials', {})
         if not isinstance(creds_all, dict):
-            self.credentials = {}
-            return
+            return {}
         creds = {}
         for cid, cred in creds_all.items():
             if cred is not None:
                 creds[cid] = cred
-        self.credentials = creds
+        return creds
 
-    def load_enabled_servers(self):
-        '''
-        Loads all usable servers with valid credentials or
-        those don't require any credential.
-        '''
-        servers_user = self.get('servers', {})
-        servers_def = self.get('servers_default', {})
-        servers_packages = {} # TODO: load servers specified by packages
-        servers_all = self.merge_dicts(servers_def, servers_packages)
-        servers_all = self.merge_dicts(servers_all, servers_user)
-        if not isinstance(servers_all, dict):
-            self.servers = {}
-            return
+    def load_servers_from(self, settings, credentials):
+        servers_all = []
+        servers_def = settings.get('default_servers', [])
+        if isinstance(servers_def, list):
+            servers_all += servers_def
+        servers_user = settings.get('servers', [])
+        if isinstance(servers_user, list):
+            servers_all += servers_user
+        if not servers_all:
+            return {}
         # once we have all servers, filter to usable ones
         servers = {}
         servers_to_dismiss = []
-        for sid, server in servers_all.items():
+        for server in servers_all:
+            sid = server.get('id', 'server_' + str(uuid.uuid4()))
             if not 'required_credentials' in server:
                 servers[sid] = server  # this server requires no credentials
             if isinstance(server['required_credentials'], str):
                 server['required_credentials'] = [server['required_credentials'],]
             for req_cred in server['required_credentials']:
-                if req_cred not in self.credentials:
+                if req_cred not in credentials or not credentials.get(req_cred):
                     servers_to_dismiss.append(sid)
+                    break
             if sid not in servers_to_dismiss:
                 servers[sid] = server
-        self.servers = servers
+            else:
+                print(f"Server {sid} dismissed due to missing credentials.")
+        return servers
 
-    def load_enabled_endpoints(self):
-        '''
-        Loads all enabled endpoints in a list for the servers that usable.
-        '''
+    def load_endpoints_from(self, servers, credentials):
+        # all server keys except those banned will be added into endpoint
+        banned_server_keys = ('name', 'description', 'endpoints')
         endpoints = {}
-        for sid, server in self.servers.items():
+        for sid, server in servers.items():
             for eid, endpoint in server.get('endpoints', {}).items():
                 for sk in server:
-                    if sk not in ('name', 'description', 'endpoints'):
+                    if sk not in banned_server_keys:
                         endpoint[sk] = server[sk]
-                    endpoint['name_server'] = server.get('name', '')
-
+                # these banned keys will be added with 'server_' prefix
+                endpoint['server_name'] = server.get('name', '')
+                endpoint['server_description'] = server.get('description', '')
+                # process endpoint headers expanding any needed credential
+                template = endpoint.get('headers', {})
+                headers = {}
+                for k, v in template.items():
+                    headers[k] = sublime.expand_variables(v, credentials)
+                endpoint['headers'] = headers
+                # add this endpoint to the returning dict
                 endpoints[f'{sid}/{eid}'] = endpoint
-        self.endpoints = endpoints
+        return endpoints
 
-    def load_usable_prompts(self):
-        '''
-        Loads all configured prompts that requires valid available endpoints or
-        requires no specific endpoints.
-        '''
-        prompts_user = self.config.get('prompts', [])
-        prompts_def = self.config.get('prompts_default', [])
-        prompts_packages = [] # TODO: load prompts specified by packages
+    def load_prompts_from(self, settings):
         prompts_all = []
-        if isinstance(prompts_def, list) and isinstance(prompts_user, list):
-            prompts_all = prompts_def + prompts_user + prompts_packages
-        # once we have all prompts, filter to usable ones
+        prompts_def = settings.get('default_prompts', [])
+        if isinstance(prompts_def, list):
+            prompts_all += prompts_def
+        prompts_user = settings.get('prompts', [])
+        if isinstance(prompts_user, list):
+            prompts_all += prompts_user
+        if not prompts_all:
+            return {}
+        # once we have all prompts, filter those requires unavailable endpoints
         prompts = {}
         for prompt in prompts_all:
-            pid = prompt.get('id', str(uuid.uuid4()))
+            pid = prompt.get('id', 'prompt_' + str(uuid.uuid4()))
             if not 'required_endpoints' in prompt:
                 prompts[pid] = prompt
                 continue
@@ -105,19 +124,30 @@ class AssistantAISettings:
             for req_ep in prompt['required_endpoints']:
                 if req_ep in self.endpoints:
                     prompts[pid] = prompt
-                else:
-                    prompt['required_endpoints'].remove(req_ep)
-        # process prompt imports
-        self.prompts = {}
-        self.prompts.update(prompts)
-        for p, prompt in prompts.items():
-            proc_prompt = self.prompt_import(prompt)
-            if proc_prompt:
-                self.prompts[p] = proc_prompt
-            else:
-                del(self.prompts[p])
+        # ensure vars are configured with defaults to each input produce a var
+        for pid, prompt in prompts.items():
+            prompt_vars = prompt.get('vars', {})
+            if not prompt_vars:
+                required_inputs = prompt.get('required_inputs', ["text"])
+                for r in required_inputs:
+                    prompt_vars[r] = f'${{{r}}}'
+                prompts[pid]['vars'] = prompt_vars
+        return prompts
 
-    def prompt_import(self, prompt, chain=None):
+    def process_prompts_import(self, prompts):
+        # process prompt imports
+        processed = {}
+        processed.update(prompts)
+        for p, prompt in prompts.items():
+            proc_prompt = self.prompt_import(processed, prompt)
+            if proc_prompt:
+                processed[p] = proc_prompt
+            else:
+                del(processed[p])
+        return processed
+
+    @staticmethod
+    def prompt_import(prompts, prompt, chain=None):
         '''
         Given a promt as specified in settings, process the import statement
         resulting in the intended prompt with all keys populated.
@@ -139,7 +169,7 @@ class AssistantAISettings:
         # there is an import, without a from id
         if not parent_id:
             # delete import key as its presence is used to determine the need to
-            # recursivelly call this function later
+            # recursively call this function later
             del(prompt['import'])
             return prompt
         # chain check for duplicates = cyclic dependency
@@ -147,24 +177,25 @@ class AssistantAISettings:
             return None
         chain.append(parent_id)
         # specified parent id doesn't exist
-        if parent_id and parent_id not in self.prompts:
+        if parent_id and parent_id not in prompts:
             return None
         # get the parent
-        parent = self.prompts.get(parent_id, {})
+        parent = prompts.get(parent_id, {})
         if not parent:
             return None
         # process parent import if needed
         if parent.get('import', None):
-            parent = self.prompt_import(parent, chain)
+            parent = AssistantAISettings.prompt_import(prompts, parent, chain)
         # process current prompt
         if parent:
-            self.prompts[parent_id] = parent
-            return self.get_imported_prompt(prompt, parent, import_spec)
+            prompts[parent_id] = parent
+            return AssistantAISettings.get_imported_prompt(prompt, parent, import_spec)
         return None
 
-    def get_imported_prompt(self, prompt, parent, import_spec):
+    @staticmethod
+    def get_imported_prompt(prompt, parent, import_spec):
         '''
-        Given a promt, its parent and the import specification, return the
+        Given a prompt, its parent and the import specification, return the
         prompt processed as per the import specs.
 
         Parent must not have the import key. That is, if the parent depends on
@@ -183,6 +214,8 @@ class AssistantAISettings:
         new.update(parent)
         new.update(prompt)
         del(new['import'])
+        # fine tune how import happens, for object/array items
+        # this is defined by the user in the 'import' key
         for key, action in actions.items():
             parent_v = parent.get(key)
             prompt_v = prompt.get(key)
@@ -202,56 +235,72 @@ class AssistantAISettings:
                 continue
         return new
 
-    def get_prompts_by_available_context(self, available_context):
+    def filter_prompts_by_available_context(self, prompts, available_context):
         '''
         Returns all usable prompts filtering by current edit state.
-        Seleteced text, available context pre and/or post contents.
+        Selected text, available context pre and/or post contents.
         '''
         # TOOD: Should eval available context size and dismiss prompts that requires unmet context
-        return self.prompts
+        return prompts
 
-    def get_prompts_by_syntax(self, syntax):
+    def filter_prompts_by_available_endpoints(self, prompts):
+        '''
+        Returns all usable prompts filtering by availability of suitable endpoints.
+        Selected text, available context pre and/or post contents.
+        '''
+        to_filter = set()
+        for p, prompt in prompts.items():
+            eps = self.get_endpoints_for_prompt(prompt)
+            if len(eps) < 1:
+                to_filter.add(p)
+        return {k: v for k, v in prompts.items() if k not in to_filter}
+
+    def filter_prompts_by_syntax(self, prompts, syntax):
         '''
         Returns all loaded usable prompts filtering by syntax
         '''
+        to_filter = set()
         syntax = syntax.lower()
-        prompts = {}
-        for p, prompt in self.prompts.items():
+        for p, prompt in prompts.items():
             prompt_syntax = prompt.get('required_syntax', [syntax, ])
             valid_syntax = [syn.lower() for syn in prompt_syntax]
-            if syntax in valid_syntax:
-                prompts[p] = prompt
-        return prompts
+            if syntax not in valid_syntax:
+                to_filter.add(p)
+        return {k: v for k, v in prompts.items() if k not in to_filter}
 
     def get_endpoints_for_prompt(self, prompt):
         '''
         Returns all loaded usable endpoints for a given prompt
         '''
-        # TODO: filter endpoints that accept all params ofered by this prompt
-        # TODO: filter endpoints that requires vars offered by this prompt
         endpoints = {}
+        # get all endpoints
         for e, endpoint in self.endpoints.items():
-            required_eps = prompt.get('required_endpoints', [e, ])
+            endpoints[e] = endpoint
+        # if prompt requires endpoints, filter all other endpoints
+        required_eps = prompt.get('required_endpoints')
+        if required_eps:
             valid_eps = [ep.lower() for ep in required_eps]
-            if e.lower() in valid_eps:
-                endpoints[e] = endpoint
+            for e, endpoint in self.endpoints.items():
+                if e not in endpoints:
+                    continue
+                if e.lower() not in valid_eps:
+                    del(endpoints[e])
+        # filter any endpoint for which valid_params doesn't contains any provided param by the prompt
+        params = prompt.get('params')
+        if params:
+            for e, endpoint in self.endpoints.items():
+                if e not in endpoints:
+                    continue
+                for p in params:
+                    if p not in endpoint.get('valid_params', {}):
+                        del(endpoints[e])
+        # filter any endpoint for which any required vars is not provided by prompt
+        prompt_vars = prompt.get('vars')
+        if prompt_vars:
+            for e, endpoint in self.endpoints.items():
+                if e not in endpoints:
+                    continue
+                for rv in endpoint.get('required_vars'):
+                    if rv not in prompt_vars:
+                        del(endpoints[e])
         return endpoints
-
-    def get(self, key, default):
-        return self.config.get(key, default)
-
-    @staticmethod
-    def merge_dicts(old, new):
-        """
-        This static method merges two dictionaries, old and new, into a single dictionary new where the values of the keys
-        in old are updated with the corresponding values in new if the keys are present in both dictionaries.
-
-        :param old: dictionary containing old values
-        :param new: dictionary containing new values
-        :return: merged dictionary with updated values
-        """
-        for k, v in old.items():
-            if k in new:
-                v.update(new[k])
-            new[k] = v
-        return new

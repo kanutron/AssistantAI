@@ -9,6 +9,7 @@ class AssistantThread(threading.Thread):
     """
     An async thread class for accessing the remote server API, and waiting for a response
     """
+    timeout = 60
     running = False
     result = None
 
@@ -19,8 +20,8 @@ class AssistantThread(threading.Thread):
         self.prompt = prompt
         self.region = region
         # prompt vars may add text
+        self.timeout = endpoint.get('max_seconds', 60)
         self.vars = self.prepare_vars(text, pre, post, syntax, kwargs)
-        self.headers = self.prepare_headers()
         self.data = self.prepare_data()
         self.conn = self.prepare_conn()
 
@@ -38,13 +39,15 @@ class AssistantThread(threading.Thread):
         Returns:
             dict: The updated dictionary of variables.
         """
+        # build base vars as provided by prompt command
         vars_ = {
             "text": text,
             "pre": pre,
             "post": post,
             "syntax": syntax,
-            **kwargs
         }
+        vars_.update(kwargs)
+        # expand vars as defined by prompt/vars
         prompt_vars = self.prompt.get('vars', {})
         for k, v in prompt_vars.items():
             # for convenience, in vars, user may specify
@@ -54,6 +57,25 @@ class AssistantThread(threading.Thread):
             prompt_vars[k] = sublime.expand_variables(v, vars_)
         vars_.update(prompt_vars)
         return vars_
+
+    def prepare_data(self):
+        """
+        This function prepares data to be sent to an API endpoint.
+
+        Returns:
+            data (dict): A dictionary containing the prepared data.
+        """
+        request = self.endpoint.get('request', {})
+        params = self.prompt.get('params', {})
+        for k, v in params.items():
+            params[k] = sublime.expand_variables(v, self.vars)
+        request.update(params)
+        data = {}
+        valid_params = self.endpoint.get('valid_params', {})
+        for k, v in request.items():
+            if k in valid_params:  # TODO: check valid_params specified type.
+                data[k] = sublime.expand_variables(v, self.vars)
+        return data
 
     def prepare_conn(self):
         """
@@ -73,40 +95,6 @@ class AssistantThread(threading.Thread):
             return http.client.HTTPSConnection(hostname, port=port)
         return http.client.HTTPConnection(hostname, port=port)
 
-    def prepare_headers(self):
-        """
-        This function prepares the headers that will be added to the HTTP request.
-        It parses the variables with the user configured credentials.
-
-        :return: A dictionary containing the headers to be added to the HTTP request
-        """
-        template = self.endpoint.get('headers', {})
-        credentials = self.settings.credentials
-        headers = {}
-        for k, v in template.items():
-            headers[k] = sublime.expand_variables(v, credentials)
-        return headers
-
-    def prepare_data(self):
-        """
-        This function prepares data to be sent to an API endpoint.
-
-        Returns:
-            data (dict): A dictionary containing the prepared data.
-        """
-        request = self.endpoint.get('request', {})
-        params = self.prompt.get('params', {})
-        for k, v in params.items():
-            params[k] = sublime.expand_variables(v, self.vars)
-        request.update(params)
-
-        data = {}
-        valid_params = self.endpoint.get('valid_params', {})
-        for k, v in request.items():
-            if k in valid_params:  # TODO: check valid_params specified type.
-                data[k] = sublime.expand_variables(v, self.vars)
-        return data
-
     def run(self):
         self.running = True
         self.result = self.get_response()
@@ -119,10 +107,8 @@ class AssistantThread(threading.Thread):
         data = json.dumps(self.data)
         method = self.endpoint.get('method', 'POST')
         resource = self.endpoint.get('resource', '')
-        # print('------------------')
-        # print(data)  # DEBUG
-        # print('------------------')
-        self.conn.request(method, resource, data, self.headers)
+        headers = self.endpoint.get('headers', {})
+        self.conn.request(method, resource, data, headers)
         response = self.conn.getresponse()
         return self.parse_response(json.loads(response.read().decode()))
 
@@ -132,8 +118,11 @@ class AssistantThread(threading.Thread):
         It returns a dictionary with keys corresponding to the keys in the template and corresponding values either from the parsed 'data'
         or an error message if any error occurred while parsing
         """
-        template = self.endpoint.get('response', {})
         response = {}
+        template = self.endpoint.get('response', {})
+        if not template:
+            response['error'] = f"The endpoint doesn't specify any reponse template."
+            return response
         for k, path in template.items():
             item = self.get_item(data, str(path))
             if not item:

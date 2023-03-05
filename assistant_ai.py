@@ -17,14 +17,14 @@ def plugin_loaded():
     """
     global settings
     settings.load()
-    settings.config.add_on_change('assistant_ai', settings.load)
+    # TODO: add_on_change
 
 def plugin_unloaded():
     """
     This module level function is called just before the plugin is unloaded.
     """
     global settings
-    settings.config.clear_on_change('assistant_ai')
+    # TODO: clear_on_change settings
 
 class AssistantAiTextCommand(sublime_plugin.TextCommand):
     """
@@ -72,11 +72,15 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
         return new
 
     def get_avialble_context(self, region):
-        # TODO: return num lines and chars for pre of 0 and post of -1 in all regions
-        for region in self.view.sel():
-            ...
-
-        return {}
+        region = sublime.Region(*region)
+        pre = sublime.Region(0, region.begin())
+        post = sublime.Region(region.end(), self.view.size())
+        return {
+            "pre_chars": len(pre),
+            "pre_lines": len(self.view.lines(pre)),
+            "post_chars": len(post),
+            "post_lines": len(self.view.lines(post)),
+        }
 
     def get_context(self, region, prompt):
         """
@@ -128,19 +132,22 @@ class AssistantAiCommand(AssistantAiTextCommand):
         """
         Recursive method for checking in on the async API fetcher
         """
-        max_seconds = settings.get('max_seconds', 60)
+        timeout = thread.timeout
+        icon_warn = "⚠️"
+        icon_progress_steps = ["⬜️","◻️","◽️","▫️","◽️","◻️",]
 
         # If we ran out of time, let user know, stop checking on the thread
-        if seconds > max_seconds:
-            msg = f"Query ran out of time! {max_seconds}s"
+        if seconds > timeout:
+            msg = f"AssistantAI: {icon_warn} Query ran out of time! {timeout}s"
             sublime.status_message(msg)
             return
 
         # While the thread is running, show them some feedback,
         # and keep checking on the thread
         if thread.running:
-            msg = "Querying remote AI server, one moment... ({}/{}s)".format(
-                seconds, max_seconds)
+            step = seconds % len(icon_progress_steps)
+            progress = icon_progress_steps[step]
+            msg = f"AssistantAI is working {progress} - Timout in {timeout-seconds}s"
             sublime.status_message(msg)
             # Wait a second, then check on it again
             sublime.set_timeout(lambda:
@@ -149,13 +156,15 @@ class AssistantAiCommand(AssistantAiTextCommand):
 
         # If we finished with no result, something is wrong
         if not thread.result:
-            sublime.status_message("Something is wrong with remote server - aborting")
+            sublime.status_message(f"AssistantAI: {icon_warn} Something is wrong with remote server - aborting")
             return
 
+        # Collect the result and act as per command spec
+        sublime.status_message("AssistantAI: Done!")
         error = thread.result.get('error')
         output = thread.result.get('output')
         if error:
-            self.view.set_status(error)
+            sublime.status_message(f"AsistantAI: {icon_warn} {error}")
         if output:
             command = thread.prompt.get('command', {'cmd':'replace'})
             if isinstance(command, str):
@@ -164,7 +173,6 @@ class AssistantAiCommand(AssistantAiTextCommand):
             # otherwise, use the prompt var, or 'Markdown'
             if 'syntax' not in command:
                 command['syntax'] = thread.vars.get('syntax', 'Markdown')
-            #
             cmds_map = {
                 'replace': 'assistant_ai_replace_text',
                 'append': 'assistant_ai_append_text',
@@ -180,7 +188,7 @@ class AssistantAiCommand(AssistantAiTextCommand):
                     "kwargs": command
                 })
 
-    def quick_panel_prompts(self, syntax=None):
+    def quick_panel_prompts(self, region, syntax=None):
         """
         Display a quick panel with all available prompts.
         """
@@ -192,8 +200,14 @@ class AssistantAiCommand(AssistantAiTextCommand):
             self.view.run_command('assistant_ai_prompt', {
                 "prompt": prompt
             })
-        prompts = settings.get_prompts_by_syntax(syntax)
-        # TODO: filter by get_prompts_by_available_context
+        if not syntax:
+            syntax = ''
+        # filter prompts by current state
+        available_context = self.get_avialble_context(region)
+        prompts = settings.prompts
+        prompts = settings.filter_prompts_by_syntax(prompts, syntax)
+        prompts = settings.filter_prompts_by_available_endpoints(prompts)
+        prompts = settings.filter_prompts_by_available_context(prompts, available_context)
         icon = "♡"
         ids = []
         items = []
@@ -204,6 +218,9 @@ class AssistantAiCommand(AssistantAiTextCommand):
             desc = sublime.expand_variables(desc, {'syntax': syntax})
             ids.append(p)
             items.append([f"{icon} {name}", f"{desc} [{p.upper()}]"])
+        if not items:
+            icon_warn = "⚠️"
+            sublime.status_message(f"AssistantAI: {icon_warn} No available prompts here, in this context.")
         win = self.view.window()
         if win:
             win.show_quick_panel(items=items, on_select=on_select)
@@ -233,6 +250,9 @@ class AssistantAiCommand(AssistantAiTextCommand):
             ids.append(e)
             items.append([f"{icon} {name_server} {name}", f"{url} [{e}]"])
         # for endpoints, if only one choice is available, auto select it
+        if not items:
+            icon_warn = "⚠️"
+            sublime.status_message(f"AssistantAI: {icon_warn} No available endpoints for the selected prompt.")
         if len(items) == 1:
             on_select(0)
         else:
@@ -266,8 +286,12 @@ class AssistantAiPromptCommand(AssistantAiCommand):
         syntax = syntax.name if syntax else None
         # ask user for a prompt to use
         if not prompt:
+            regions = self.view.sel()
+            r_start = regions[0].begin()
+            r_end = regions[-1].end()
+            region = sublime.Region(r_start, r_end)
             sublime.set_timeout_async(
-                functools.partial(self.quick_panel_prompts, syntax=syntax))
+                functools.partial(self.quick_panel_prompts, region=region, syntax=syntax))
             return
         # ask user for an endpont to use (if > 1)
         if not endpoint:
@@ -287,8 +311,8 @@ class AssistantAiPromptCommand(AssistantAiCommand):
         # for each selected region, perform a request
         for region in self.view.sel():
             text, pre, post = self.get_context(region, prompt)
-            if len(text) < 1:
-                continue
+            # if len(text) < 1:
+            #     continue
             # TODO: hande_thread is not blocking, so we don't take advantadge of multi selection here.
             # BUG: when user selects multi text, the thread is overwritten. Complex fix ahead!
             thread = AssistantThread(settings, prompt, endpoint, region, text, pre, post, syntax, kwargs)
