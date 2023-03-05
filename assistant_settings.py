@@ -30,6 +30,9 @@ class AssistantAISettings:
         be dismissed.
         '''
         creds_all = self.get('credentials', {})
+        if not isinstance(creds_all, dict):
+            self.credentials = {}
+            return
         creds = {}
         for cid, cred in creds_all.items():
             if cred is not None:
@@ -46,6 +49,9 @@ class AssistantAISettings:
         servers_packages = {} # TODO: load servers specified by packages
         servers_all = self.merge_dicts(servers_def, servers_packages)
         servers_all = self.merge_dicts(servers_all, servers_user)
+        if not isinstance(servers_all, dict):
+            self.servers = {}
+            return
         # once we have all servers, filter to usable ones
         servers = {}
         servers_to_dismiss = []
@@ -84,7 +90,9 @@ class AssistantAISettings:
         prompts_user = self.config.get('prompts', [])
         prompts_def = self.config.get('prompts_default', [])
         prompts_packages = [] # TODO: load prompts specified by packages
-        prompts_all = prompts_def + prompts_user + prompts_packages
+        prompts_all = []
+        if isinstance(prompts_def, list) and isinstance(prompts_user, list):
+            prompts_all = prompts_def + prompts_user + prompts_packages
         # once we have all prompts, filter to usable ones
         prompts = {}
         for prompt in prompts_all:
@@ -103,13 +111,13 @@ class AssistantAISettings:
         self.prompts = {}
         self.prompts.update(prompts)
         for p, prompt in prompts.items():
-            proc_prompt = self.prompt_import(p, prompt)
+            proc_prompt = self.prompt_import(prompt)
             if proc_prompt:
                 self.prompts[p] = proc_prompt
             else:
                 del(self.prompts[p])
 
-    def prompt_import(self, p, prompt, chain=None):
+    def prompt_import(self, prompt, chain=None):
         '''
         Given a promt as specified in settings, process the import statement
         resulting in the intended prompt with all keys populated.
@@ -147,7 +155,7 @@ class AssistantAISettings:
             return None
         # process parent import if needed
         if parent.get('import', None):
-            parent = self.prompt_import(parent_id, parent, chain)
+            parent = self.prompt_import(parent, chain)
         # process current prompt
         if parent:
             self.prompts[parent_id] = parent
@@ -229,11 +237,11 @@ class AssistantAISettings:
                 endpoints[e] = endpoint
         return endpoints
 
-    def get(self, key, default=None):
+    def get(self, key, default):
         return self.config.get(key, default)
 
     @staticmethod
-    def merge_dicts(old, new) -> dict:
+    def merge_dicts(old, new):
         """
         This static method merges two dictionaries, old and new, into a single dictionary new where the values of the keys
         in old are updated with the corresponding values in new if the keys are present in both dictionaries.

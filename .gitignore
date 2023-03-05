@@ -6,3 +6,6 @@
 
 # temproary folder
 tmp/
+
+# my envrc
+.envrc
