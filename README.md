@@ -97,7 +97,7 @@ A server is a JSON specification that includes the URL, the needed headers and r
 
 If the server specifies a required credential (like `api_key` in this case), and this credential is not configured by the user, the server will be not available. Any prompt that explicitly requires endpoints of this server will be unavailable.
 
-Headers to be sent to the server may include the credentials configured by the user. They will be expanded bu Sublime Text when creating the HTTP request.
+Headers to be sent to the server may include the credentials configured by the user. They will be expanded by Sublime Text when creating the HTTP request.
 
 ### Server endpoints
 
