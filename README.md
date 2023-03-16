@@ -1,27 +1,37 @@
 # AssistantAI Sublime Text plugin
 
-This Sublime Text plugin is a general purpose implementation of an HTTP API client that allows to perform text manipulation with remote API responses, as a result to a request based on selected text and optional user input.
+This Sublime Text plugin is a general purpose implementation of an HTTP API client that allows to perform text manipulation with remote API responses, as a result to requests based on selected text and optional user input.
 
 A common use case is to consume API for Generative AI like ChatGPT or OpenAI Codex to complete, edit, comment or explain selected code chunks.
 
-The usage is simple:
+AssistantAI requires additional plugins where the actual server and prompt templates are provided. Everything is configured in Sublime Settings JSON files, including servers, endpoints, prompt templates and credentials.
 
-- Select a text region (i.e.: A code function or Markdown section)
-- Hit the configured key map (or Command Palette > AssistantAI)
-- Ask for `AssistantAI` command
-- AssistantAI will show a quick panel with available **prompts**
-- Choose the desired prompt and, if the prompt needs, **inputs**, those will be requested using UI
+Check these AssistantAI plugins:
+
+- **AssistantAI-OpenAI**: provides specifications of OpenAI servers and the edits, text completion, and chat endpoints. Also provides basic prompts for interacting with ChatGP. [GitHub](https://github.com/kanutron/AssistantAI-OpenAI)
+- **AssistantAI-Python**: provides prompt specification to make Python code manipulation using any available endpoint compatible with those prompt specifications. OpenAI server is one of those compatible endpoints. [GitHub](https://github.com/kanutron/AssistantAI-Python)
+
+# Usage
+
+Once you installed AssistantAI and at least one plugin providing Server specification, you will be able to use it.
+
+The general usage is simple:
+
+- Select a text region (i.e.: A code function or Markdown section).
+- Hit the configured key map (or Command Palette > AssistantAI).
+- `AssistantAI` will show a quick panel with available **prompts**.
+- Choose the desired prompt. If the prompt needs, **inputs**, those will be requested using UI.
 - When several **servers** with valid **endpoints** qualifies for the selected prompt and the current context (syntax, selections, inputs, etc.), a list of endpoints is given.
 
-Once AssistantAI have a prompt, all needed inputs and an endpoint is selected, it builds an HTTP request based on that and makes the network request.
+Once AssistantAI have a prompt, all needed inputs and the endpoint is selected, it builds an HTTP request based on that and makes the network request.
 
 The response is parsed based on the endpoint specification and the specified **AssistantAI command** is executed.
 
-As an example, consider this flow using `AssistantAI-OpenAI` plugin:
+As an example, consider this flow using `AssistantAI-OpenAI` plugin while editing a Python file:
 
 - Select a python function
 - Ask AssistantAI for the prompt "Add python docstring"
-- Since only one endpoint qualifies, a request is made to OpenAI without further inputs
+- *Since only one endpoint qualifies, a request is made to OpenAI without further inputs*
 - The python docstring is added to the selected function as returned by ChatGPT
 
 # Installation
@@ -33,7 +43,7 @@ Install this plugin and you will have available the following:
 
 The `AssistantAI` command in the command palette.
 
-TODO: publish in package control so installation is straight forward.
+==TODO==: publish in package control so installation is straight forward.
 
 ## Settings
 
@@ -53,14 +63,84 @@ If no prompts are available, `AssistantAI` command does nothing else than show a
 
 You can add your own servers using JSON settings (i.e.: `Settings` > ... > `AssistantAI` > `Settings`), but the intended use is to install AssistantAI plugins that provides complex and reusable server and prompt specifications.
 
-Check out these plugins:
-
-- **AssistantAI-OpenAI**: provides server and endpoint specifications to OpenAI text completion, edits and chat completions end points and basic prompts for interacting with ChatGP. [GitHub](https://github.com/kanutron/AssistantAI-OpenAI)
-- **AssistantAI-Python**: provides prompt specification to make Python code manipulation using any available endpoint compatible with those prompt specifications. OpenAI server is one of those compatible endpoints. [GitHub](https://github.com/kanutron/AssistantAI-Python)
+- **AssistantAI-OpenAI** [here](https://github.com/kanutron/AssistantAI-OpenAI)
+- **AssistantAI-Python** [here](https://github.com/kanutron/AssistantAI-Python)
 
 # Understanding the concepts
 
-This plugin uses 4 types of setting specifications:
+This plugin uses 4 types of specifications.
+
+- Servers
+- Server Endpoints
+- Credentials
+- Prompts
+
+## Server
+
+A server is a JSON specification that includes the URL, the needed headers and required credentials keys, and a set of endpoints.
+
+```json
+{
+	"id": "openai",
+	"name": "OpenAI",
+	"url": "https://api.openai.com:443",
+	"timeout": 60,
+	"required_credentials": ["api_key"],
+	"headers": {
+		"Authorization": "Bearer ${api_key}",
+		"Content-Type": "application/json",
+		"cache-control": "no-cache",
+	},
+	"endpoints": { ... }
+},
+```
+
+If the server specifies a required credential (like `api_key` in this case), and this credential is not configured by the user, the server will be not available. Any prompt that explicitly requires endpoints of this server will be unavailable.
+
+Headers to be sent to the server may include the credentials configured by the user. They will be expanded bu Sublime Text when creating the HTTP request.
+
+### Server endpoints
+
+Specification of the request and expected response. It is included in the `endpoints` key of a server specification.
+
+Each server may provide one or more endpoints.
+
+`request` key provides the JSON object to be built by AssistantAI to send the request to the server's endpoint.
+
+`response` specifies two keys:
+
+- `error`: for the key where any error will be retrieved
+- `output`: the path (forward slashes `/` as a separator) where to retrieve the text
+
+```json
+{
+	"chat_completions": {
+		"name": "Chat Completions",
+		"method": "POST",
+		"resource": "/v1/chat/completions",
+		"required_vars": ["text"],
+		"valid_params": {
+			"model": "string",
+			"messages": "string",
+			...
+			"user": "string",
+		},
+		"request": {
+			"model": "gpt-3.5-turbo",
+			"messages": [
+				{
+					"role": "user",
+					"content": "${text}",
+				}
+			],
+		},
+		"response": {
+			"error": "error",
+			"output": "choices/0/message/content",
+		},
+	}
+}
+```
 
 ## Credentials
 
@@ -74,11 +154,15 @@ If you install **AssistantAI-OpenAI** plugin you will have to setup this:
 		"api_key": "sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXx"
 	},
 }
-``` 
+```
+
+The key `api_key` is later used by the server specification as a variable that will be expanded in a HTTP header.
+
+Each AsistantAI plugin providing a server specification (like AssistantAI-OpenAI) will require you to set up the credentials in your user-defined settings in order to enable the server. 
 
 ## Prompt
 
-A prompt is a configured set of inputs and variables needed to make the request
+A prompt is a configured set of inputs and variables needed to build a request based on user text selection and additional inputs.
 
 Prompts are context aware, accounting for selected text, available pre- and post-text, syntax of the current buffer, and configured server endpoints.
 
@@ -116,58 +200,30 @@ Command can be;
 - `append` at the end of selection
 - `insert` replacing a placeholder
 - `output` to a new bottom panel
-- `create` a new buffer with the response.
+- `create` a new buffer with the response
 
-## Server
+# Contributing
 
-A server is a JSON specification that includes the URL, the needed headers and required credentials keys, and a set of endpoints.
+If you want to contribute, feel free to open an Issue or send your PR.
 
-```json
-{
-	"id": "openai",
-	"name": "OpenAI",
-	"url": "https://api.openai.com:443",
-	"timeout": 60,
-	"required_credentials": ["api_key"],
-	"headers": {
-		"Authorization": "Bearer ${api_key}",
-		"Content-Type": "application/json",
-		"cache-control": "no-cache",
-	},
-	"endpoints": { ... }
-},
-```
+The code is pretty much tidy now. But there are some missing features like:
 
-### Server endpoints
+- Import statement for Server specifications
+- Proper documentation for AssistantAI plugin developers
+- JSON schema for Server and Prompts
+- Testing Sublime Versions other than `4143 macOS`
+- Implementing other plugins such as GitHub, Gitea and similar to interact with their APIs.
+- Implementing super cool prompts for Markdown, Java, Rust, ...
+- Improving Quick Panel inputs 
 
-Specification of the request and expected response.
+# License
 
-```json
-{
-	"chat_completions": {
-		"name": "Chat Completions",
-		"method": "POST",
-		"resource": "/v1/chat/completions",
-		"required_vars": ["text"],
-		"valid_params": {
-			"model": "string",
-			"messages": "string",
-			...
-			"user": "string",
-		},
-		"request": {
-			"model": "gpt-3.5-turbo",
-			"messages": [
-				{
-					"role": "user",
-					"content": "${text}",
-				}
-			],
-		},
-		"response": {
-			"error": "error",
-			"output": "choices/0/message/content",
-		},
-	}
-}
-```
+This software is released under MIT license.
+
+# Disclaimer
+
+This plugin is complex to setup. Once properly done, the usage is straight forward though. A good documentation is key for increasing adoption. 
+
+# Contact
+
+My twitter accounts is @kanutron, and although I'm not super active there, I receive push notification on DM.
