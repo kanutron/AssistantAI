@@ -2,61 +2,15 @@
 	// credentials
 	"credentials": {},
 
-	// add your custom prompts here
+	// add your custom prompts
 	"prompts": [],
 
-	// add your custom servers here
+	// add your custom servers
 	"servers": [],
 
-	// prompts provided by this package
+	// prompts provided by this package (none)
 	"default_prompts": [],
 
-	// servers provided by this package
-	"default_servers": [
-		{
-			"id": "askcodi",
-			"name": "AskCodi",
-			"url": "https://us-central1-askcodi-1a402.cloudfunctions.net",
-			"timeout": 60,
-			"required_credentials": [
-				"key",
-				"device_id",
-				"fast_token",
-				"editor",
-				"version"
-			],
-			"headers": {
-	            "Authorization": "${key}",
-	            "deviceid": "${device_id}",
-	            "idetype": "${editor}",
-	            "token": "${fast_token}",
-	            "source": "${editor} - ${version}",
-	            "Content-Type": "application/json"
-			},
-			"endpoints": {
-				"completion": {
-					"name": "Edit",
-					"description": "Edit selected text",
-					"method": "POST",
-					"resource": "/askCodiExtension/completion",
-					"required_vars": ["pre"],
-					"valid_params": {
-			            "query": "${pre}",
-			            "generated": "",
-			            "context": "",
-			            "fromLanguage1": "${syntax}",
-			            "fromLanguage2": "",
-			            "toLanguage": "",
-			            "info": "",
-			            "position": 0
-					},
-					"params": {
-			            "query": "${pre}",
-			            "fromLanguage1": "${syntax}",
-			            "position": 0
-					}
-				},
-			}
-		}
-	]
+	// servers provided by this package (none)
+	"default_servers": []
 }

@@ -6,17 +6,20 @@ SETTINGS_FILE = 'assistant_ai.sublime-settings'
 PKG_SETTINGS_FILE_BLOB = 'assistant_ai*.sublime-settings'
 
 class AssistantAISettings:
-    '''
+    """
     Handles all AssistantAI settings.
-    '''
+    """
     endpoints = {}
     prompts = {}
+    settings_callbacks = {}
 
     def load(self):
         """
         Loads settings and prompts from all packages that provides AssistantAI settings.
+        Any package providing assistant_ai*.sublime-settings will be processed.
 
-        Each package provided endpoints can only use credentials from its own settings files.
+        Each package provided endpoints can only use credentials from its own settings files
+        but can rely on other packages configured end points.
 
         :return: None
         """
@@ -35,13 +38,46 @@ class AssistantAISettings:
         for file in files:
             settings = self.load_settings_from(file)
             self.prompts.update(self.load_prompts_from(settings))
+        # since some prompts may import from others, process the import statements
         self.prompts = self.process_prompts_import(self.prompts)
 
+    def unload(self):
+        """
+        Clears all the 'assistant_ai' settings on_change callbacks from the
+        `settings_callbacks` dictionary.
+
+        :return: None
+        """
+        for file in self.settings_callbacks:
+            self.settings_callbacks[file].clear_on_change('assistant_ai')
+
     def load_settings_from(self, file):
+        """
+        Load settings from a given file in Sublime Text.
+
+        Args:
+        * file: A string representing the file path of the settings file.
+
+        Returns:
+        * settings: The loaded settings from the file.
+
+        Side Effects:
+        * Adds a callback for the settings file if it has not been registered before.
+        If a change is made to that file, reload will happen.
+        """
         settings = sublime.load_settings(file)
+        if file not in self.settings_callbacks:
+            settings.add_on_change('assistant_ai', self.load)
+            self.settings_callbacks[file] = settings
         return settings
 
     def load_credentials_from(self, settings):
+        """
+        Extracts valid credentials from settings.
+
+        :param settings: A dictionary containing credentials data.
+        :return: A dictionary containing valid credentials.
+        """
         creds_all = settings.get('credentials', {})
         if not isinstance(creds_all, dict):
             return {}
@@ -52,6 +88,17 @@ class AssistantAISettings:
         return creds
 
     def load_servers_from(self, settings, credentials):
+        """
+        This function loads available servers from settings and return servers
+        that can be accessed using provided credentials.
+
+        :param settings: The settings to be used to load servers.
+        :type settings: dict
+        :param credentials: The credentials to access servers.
+        :type credentials: dict
+        :return: A dictionary containing Id and info of servers that can be accessed using provided credentials.
+        :rtype: dict
+        """
         servers_all = []
         servers_def = settings.get('default_servers', [])
         if isinstance(servers_def, list):
@@ -81,28 +128,58 @@ class AssistantAISettings:
         return servers
 
     def load_endpoints_from(self, servers, credentials):
+        """
+        Load all available endpoints from given servers and process their headers.
+
+        :param servers: A dictionary containing information about servers.
+        :type servers: dict
+        :param credentials: A dictionary containing credentials for expanding headers.
+        :type credentials: dict
+        :return: A dictionary containing available endpoints with processed headers.
+        :rtype: dict
+        """
         # all server keys except those banned will be added into endpoint
         banned_server_keys = ('name', 'description', 'endpoints')
+        # create an empty dictionary for holding endpoints
         endpoints = {}
+        # iterate over each server in the given `servers` dictionary
         for sid, server in servers.items():
+            # iterate over each endpoint in the current `server`
             for eid, endpoint in server.get('endpoints', {}).items():
+                # iterate over each key in the current `server`
                 for sk in server:
+                    # append the value of `server[sk]` in the `endpoint` dictionary,
+                    # only if `sk` is not among the banned keys
                     if sk not in banned_server_keys:
                         endpoint[sk] = server[sk]
-                # these banned keys will be added with 'server_' prefix
+                # add the server related keys with the prefix 'server_'
                 endpoint['server_name'] = server.get('name', '')
                 endpoint['server_description'] = server.get('description', '')
                 # process endpoint headers expanding any needed credential
                 template = endpoint.get('headers', {})
                 headers = {}
+                # iterate over each key-value pair in the `template` dictionary for headers
                 for k, v in template.items():
+                    # expand any variables in `v` using the given `credentials`
                     headers[k] = sublime.expand_variables(v, credentials)
+                # update the original `headers` dictionary with new `headers` dictionary
                 endpoint['headers'] = headers
                 # add this endpoint to the returning dict
                 endpoints[f'{sid}/{eid}'] = endpoint
+        # return the dictionary containing all endpoints with processed headers
         return endpoints
 
     def load_prompts_from(self, settings):
+        """
+        This function loads prompts from the settings file and filters out prompts that require unavailable endpoints.
+        Then, it ensures that variables are configured with defaults, so each input produces a variable.
+
+        Args:
+        - settings: dictionary containing all settings
+
+        Returns:
+        - prompts: dictionary containing all prompts that were not filtered out and have default variables
+        """
         prompts_all = []
         prompts_def = settings.get('default_prompts', [])
         if isinstance(prompts_def, list):
@@ -112,7 +189,6 @@ class AssistantAISettings:
             prompts_all += prompts_user
         if not prompts_all:
             return {}
-        # once we have all prompts, filter those requires unavailable endpoints
         prompts = {}
         for prompt in prompts_all:
             pid = prompt.get('id', 'prompt_' + str(uuid.uuid4()))
@@ -124,18 +200,28 @@ class AssistantAISettings:
             for req_ep in prompt['required_endpoints']:
                 if req_ep in self.endpoints:
                     prompts[pid] = prompt
-        # ensure vars are configured with defaults to each input produce a var
-        for pid, prompt in prompts.items():
-            prompt_vars = prompt.get('vars', {})
-            if not prompt_vars:
-                required_inputs = prompt.get('required_inputs', ["text"])
-                for r in required_inputs:
-                    prompt_vars[r] = f'${{{r}}}'
-                prompts[pid]['vars'] = prompt_vars
+
+            for pid, prompt in prompts.items():
+                prompt_vars = prompt.get('vars', {})
+                if not prompt_vars:
+                    required_inputs = prompt.get('required_inputs', ['text',])
+                    for r in required_inputs:
+                        prompt_vars[r] = f'${{{r}}}'
+                    prompts[pid]['vars'] = prompt_vars
         return prompts
 
+
     def process_prompts_import(self, prompts):
-        # process prompt imports
+        """
+        This function processes all loaded prompts returns a dictionary of processed prompts.
+        For each prompt, process the 'import' statement if needed.
+
+        Parameters:
+        prompts (dict): A dictionary containing prompts to be processed.
+
+        Returns:
+        dict: A dictionary containing processed prompts.
+        """
         processed = {}
         processed.update(prompts)
         for p, prompt in prompts.items():
@@ -146,16 +232,17 @@ class AssistantAISettings:
                 del(processed[p])
         return processed
 
+
     @staticmethod
     def prompt_import(prompts, prompt, chain=None):
-        '''
+        """
         Given a promt as specified in settings, process the import statement
-        resulting in the intended prompt with all keys populated.
+        resulting in the intended prompt with all keys populated from its parent.
 
         Is a recursive function for resolving the dependency tree of prompts.
 
         Cyclic dependency safe.
-        '''
+        """
         if not isinstance(chain, list):
             chain = []
         import_spec = prompt.get('import', None)
@@ -194,13 +281,13 @@ class AssistantAISettings:
 
     @staticmethod
     def get_imported_prompt(prompt, parent, import_spec):
-        '''
+        """
         Given a prompt, its parent and the import specification, return the
         prompt processed as per the import specs.
 
         Parent must not have the import key. That is, if the parent depends on
         another ancestor, that should be resolved first.
-        '''
+        """
         actions = {
             'required_inputs': 'replace',
             'required_context': 'replace',
@@ -236,18 +323,35 @@ class AssistantAISettings:
         return new
 
     def filter_prompts_by_available_context(self, prompts, available_context):
-        '''
+        """
         Returns all usable prompts filtering by current edit state.
         Selected text, available context pre and/or post contents.
-        '''
-        # TOOD: Should eval available context size and dismiss prompts that requires unmet context
-        return prompts
+        """
+        to_filter = set()
+        for p, prompt in prompts.items():
+            if 'text' in prompt.get('required_inputs', ['text',]):
+                if available_context.get('text_chars') < 1:
+                    to_filter.add(p)
+                    continue
+            if 'required_context' not in prompt:
+                continue
+            req_crx = prompt.get('required_context')
+            unit = req_crx.get('unit', 'chars')
+            req_pre = req_crx.get('pre_size', None)
+            req_post = req_crx.get('post_size', None)
+            pre = available_context.get('pre_' + unit)
+            post = available_context.get('post_' + unit)
+            if req_pre and req_pre > pre:
+                to_filter.add(p)
+            if req_post and req_post > post:
+                to_filter.add(p)
+        return {k: v for k, v in prompts.items() if k not in to_filter}
 
     def filter_prompts_by_available_endpoints(self, prompts):
-        '''
+        """
         Returns all usable prompts filtering by availability of suitable endpoints.
         Selected text, available context pre and/or post contents.
-        '''
+        """
         to_filter = set()
         for p, prompt in prompts.items():
             eps = self.get_endpoints_for_prompt(prompt)
@@ -256,9 +360,9 @@ class AssistantAISettings:
         return {k: v for k, v in prompts.items() if k not in to_filter}
 
     def filter_prompts_by_syntax(self, prompts, syntax):
-        '''
+        """
         Returns all loaded usable prompts filtering by syntax
-        '''
+        """
         to_filter = set()
         syntax = syntax.lower()
         for p, prompt in prompts.items():
@@ -269,9 +373,9 @@ class AssistantAISettings:
         return {k: v for k, v in prompts.items() if k not in to_filter}
 
     def get_endpoints_for_prompt(self, prompt):
-        '''
+        """
         Returns all loaded usable endpoints for a given prompt
-        '''
+        """
         endpoints = {}
         # get all endpoints
         for e, endpoint in self.endpoints.items():

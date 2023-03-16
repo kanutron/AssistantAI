@@ -16,8 +16,8 @@ class AssistantThread(threading.Thread):
     def __init__(self, settings, prompt, endpoint, region, text, pre, post, syntax, kwargs):
         super().__init__()
         self.settings = settings
-        self.endpoint = endpoint
         self.prompt = prompt
+        self.endpoint = endpoint
         self.region = region
         # prompt vars may add text
         self.timeout = endpoint.get('max_seconds', 60)
@@ -92,6 +92,7 @@ class AssistantThread(threading.Thread):
         if not url.port:
             port = 443 if scheme == 'https' else 80
         if scheme == 'https':
+            # TODO: we should allow connect to servers with custom CA certificates and using client certificates
             return http.client.HTTPSConnection(hostname, port=port)
         return http.client.HTTPConnection(hostname, port=port)
 

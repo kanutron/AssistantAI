@@ -17,14 +17,13 @@ def plugin_loaded():
     """
     global settings
     settings.load()
-    # TODO: add_on_change
 
 def plugin_unloaded():
     """
     This module level function is called just before the plugin is unloaded.
     """
     global settings
-    # TODO: clear_on_change settings
+    settings.unload()
 
 class AssistantAiTextCommand(sublime_plugin.TextCommand):
     """
@@ -71,7 +70,22 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
             new += indent + line + "\n"
         return new
 
-    def get_avialble_context(self, region):
+    def get_available_context(self, region):
+        """
+        Returns the amount of characters and lines in the text surrounding a given region.
+
+        Args:
+            region: A tuple containing two integers indicating the start and end of a region.
+
+        Returns:
+            A dictionary with the following keys and values:
+                - "pre_chars": The number of characters before the start of the region.
+                - "pre_lines": The number of lines before the start of the region.
+                - "post_chars": The number of characters after the end of the region.
+                - "post_lines": The number of lines after the end of the region.
+                - "text_chars": The number of characters within the region.
+                - "text_lines": The number of lines within the region.
+        """
         region = sublime.Region(*region)
         pre = sublime.Region(0, region.begin())
         post = sublime.Region(region.end(), self.view.size())
@@ -80,11 +94,21 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
             "pre_lines": len(self.view.lines(pre)),
             "post_chars": len(post),
             "post_lines": len(self.view.lines(post)),
+            "text_chars": len(region),
+            "text_lines": len(self.view.lines(region)),
         }
 
     def get_context(self, region, prompt):
         """
-        Given a region, return the selected text, and context pre and post such text
+        Returns the text content before and after the region based on the given required context.
+
+        Parameters:
+        region (sublime.Region): The region whose context needs to be extracted.
+        prompt (dict): The prompt with the required context settings.
+
+        Returns:
+        tuple: A tuple containing text, pre and post strings.
+
         """
         default_required_context = {
             "unit": "chars",
@@ -124,6 +148,7 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
                 reg_post = sublime.Region(lstart, lend)
                 post = self.view.substr(reg_post)
         return text, pre, post
+
 
 class AssistantAiCommand(AssistantAiTextCommand):
     global settings
@@ -188,9 +213,11 @@ class AssistantAiCommand(AssistantAiTextCommand):
                     "kwargs": command
                 })
 
-    def quick_panel_prompts(self, region, syntax=None):
+    def quick_panel_prompts(self, region, syntax=None, **kwargs):
         """
         Display a quick panel with all available prompts.
+
+        :return: None
         """
         def on_select(index):
             if index < 0:
@@ -198,12 +225,13 @@ class AssistantAiCommand(AssistantAiTextCommand):
             pid = ids[index]
             prompt = prompts[pid]
             self.view.run_command('assistant_ai_prompt', {
-                "prompt": prompt
+                "prompt": prompt,
+                **kwargs
             })
         if not syntax:
             syntax = ''
         # filter prompts by current state
-        available_context = self.get_avialble_context(region)
+        available_context = self.get_available_context(region)
         prompts = settings.prompts
         prompts = settings.filter_prompts_by_syntax(prompts, syntax)
         prompts = settings.filter_prompts_by_available_endpoints(prompts)
@@ -225,10 +253,12 @@ class AssistantAiCommand(AssistantAiTextCommand):
         if win:
             win.show_quick_panel(items=items, on_select=on_select)
 
-    def quick_panel_endpoints(self, prompt):
+    def quick_panel_endpoints(self, prompt, **kwargs):
         """
         Display a quick panel with all available endpoints for a given prompt.
         Automatically select the endpoint if only one is available.
+
+        :return: None
         """
         def on_select(index):
             if index < 0:
@@ -238,6 +268,7 @@ class AssistantAiCommand(AssistantAiTextCommand):
             self.view.run_command('assistant_ai_prompt', {
                 "prompt": prompt,
                 "endpoint": endpoint,
+                **kwargs
             })
         endpoints = settings.get_endpoints_for_prompt(prompt)
         icon = "♢"
@@ -260,10 +291,11 @@ class AssistantAiCommand(AssistantAiTextCommand):
             if win:
                 win.show_quick_panel(items=items, on_select=on_select)
 
-    # TODO: should accept req_in, caption, and list of options
     def input_panel(self, key, caption, prompt, endpoint, **kwargs):
         """
-        Display a input panel asking the user for the instruction.
+        Displays an input panel to the user with a provided caption and waits for user input to be submitted.
+
+        :return: None
         """
         def on_done(text):
             self.view.run_command('assistant_ai_prompt', {
@@ -276,6 +308,36 @@ class AssistantAiCommand(AssistantAiTextCommand):
         if win:
             win.show_input_panel(caption=caption, initial_text="",
                 on_done=on_done, on_change=None, on_cancel=None)
+
+    def quick_panel_list(self, key, items, prompt, endpoint, **kwargs):
+        """
+        Displays a panel with a list of items to select, and upon selection,
+        runs the 'assistant_ai_prompt' command with the selected item, as well as
+        additional keyword arguments.
+
+        Returns:
+            None
+        """
+        def on_select(index):
+            if index < 0:
+                return
+            text = items[index]
+            self.view.run_command('assistant_ai_prompt', {
+                "prompt": prompt,
+                "endpoint": endpoint,
+                key: text,
+                **kwargs
+            })
+        if not items:
+            icon_warn = "⚠️"
+            sublime.status_message(f"AssistantAI: {icon_warn} No available items for {key}.")
+        if len(items) == 1:
+            on_select(0)
+        else:
+            win = self.view.window()
+            if win:
+                win.show_quick_panel(items=items, on_select=on_select)
+
 
 class AssistantAiPromptCommand(AssistantAiCommand):
     global settings
@@ -293,26 +355,36 @@ class AssistantAiPromptCommand(AssistantAiCommand):
             sublime.set_timeout_async(
                 functools.partial(self.quick_panel_prompts, region=region, syntax=syntax))
             return
-        # ask user for an endpont to use (if > 1)
-        if not endpoint:
-            sublime.set_timeout_async(
-                functools.partial(self.quick_panel_endpoints, prompt=prompt))
-            return
         # ask the user for the required inputs
-        required_inputs = prompt.get('required_inputs', [])
+        required_inputs = prompt.get('required_inputs', ['text', ])
         required_inputs = [i.lower() for i in required_inputs if i != 'text']
         for req_in in required_inputs:
             if req_in not in kwargs:
-                # TODO: seatch an input spec in the prompt to configure the input panel
+                prompt_inputs = prompt.get('inputs')
+                if prompt_inputs and req_in in prompt_inputs:
+                    input_spec = prompt_inputs.get(req_in)
+                    input_type = input_spec.get('type', 'text')
+                    if input_type == 'list':
+                        input_items = input_spec.get('items', [])
+                        sublime.set_timeout_async(functools.partial(self.quick_panel_list,
+                            key=req_in, items=input_items,
+                            prompt=prompt, endpoint=endpoint, **kwargs))
+                        return
+                # generic input panel
                 sublime.set_timeout_async(functools.partial(self.input_panel,
                         key=req_in, caption=req_in.title(), prompt=prompt,
                         endpoint=endpoint, **kwargs))
                 return
+        # ask user for an endpont to use (if > 1)
+        if not endpoint:
+            sublime.set_timeout_async(
+                functools.partial(self.quick_panel_endpoints, prompt=prompt, **kwargs))
+            return
         # for each selected region, perform a request
         for region in self.view.sel():
             text, pre, post = self.get_context(region, prompt)
-            # if len(text) < 1:
-            #     continue
+            if 'text' in required_inputs and len(text) < 1:
+                continue
             # TODO: hande_thread is not blocking, so we don't take advantadge of multi selection here.
             # BUG: when user selects multi text, the thread is overwritten. Complex fix ahead!
             thread = AssistantThread(settings, prompt, endpoint, region, text, pre, post, syntax, kwargs)
