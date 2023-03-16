@@ -222,8 +222,19 @@ This software is released under MIT license.
 
 # Disclaimer
 
+This is my first Sublime Text plugin and probably is full of bugs.
+
 This plugin is complex to setup. Once properly done, the usage is straight forward though. A good documentation is key for increasing adoption. 
 
 # Contact
 
 My twitter accounts is @kanutron, and although I'm not super active there, I receive push notification on DM.
+
+# Credits
+
+I been learning to code Sublime Text plugins by:
+
+- Reading the code from CodexAI plugin from OpenAI
+- Reading the code from https://github.com/yaroslavyaroslav/OpenAI-sublime-text/tree/master
+- Interacting with ChatGPT (using this plugin!)
+- Reading the docs from Sublime API reference and Package Control docs
