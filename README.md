@@ -8,7 +8,7 @@ AssistantAI requires additional plugins where the actual server and prompt templ
 
 Check these AssistantAI plugins:
 
-- [**AssistantAI-OpenAI**](https://github.com/kanutron/AssistantAI-OpenAI): provides specifications of OpenAI servers and the edits, text completion, and chat endpoints. Also provides basic prompts for interacting with ChatGP.
+- [**AssistantAI-OpenAI**](https://github.com/kanutron/AssistantAI-OpenAI): provides specifications of OpenAI servers and the edits, completions, and chat endpoints. Also provides basic prompts for interacting with ChatGPT and their text models.
 - [**AssistantAI-Python**](https://github.com/kanutron/AssistantAI-Python): provides prompt specification to make Python code manipulation using any available endpoint compatible with those prompt specifications. OpenAI server is one of those compatible endpoints. 
 
 # Usage
