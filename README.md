@@ -4,6 +4,8 @@ This Sublime Text plugin is a general purpose implementation of an HTTP API clie
 
 A common use case is to consume API for Generative AI like ChatGPT or OpenAI Codex to complete, edit, comment or explain selected code chunks. Another example is to consume GitHub, Gitea or similar VCS server's API so add Issues, PR and similar workflows. 
 
+![][screenshot.gif]
+
 AssistantAI can be easily extended in functionalities by other package developers, providing plugins where the actual server and prompt templates are defined, by means of specified JSON files in Sublime Settings format, where servers, endpoints, prompt templates and credentials placeholders are provided.
 
 # Usage
@@ -304,4 +306,5 @@ I been learning to code Sublime Text plugins by:
 - Reading the code from CodexAI plugin from OpenAI
 - Reading the code from https://github.com/yaroslavyaroslav/OpenAI-sublime-text/tree/master
 - Interacting with ChatGPT (using this plugin!)
-- Reading the docs from Sublime API reference and Package Control docs
+- Reading the docs from Sublime API reference and Package Control docsAssistantAI
+[screenshort.gif]: 
