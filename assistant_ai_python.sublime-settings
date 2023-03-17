@@ -59,5 +59,29 @@
 				"syntax": "Markdown"
 			},
 		},
+		{
+			"id": "python_explain_selection",
+			"name": "Explain selected text",
+			"description": "Explain the selected code.",
+			"required_inputs": ["text"],
+			"required_context": {
+				"unit": "lines",
+				"pre_size": 1
+			},
+			"vars": {
+				"text": [
+					"Explain the following ${syntax} code following these rules:",
+					"* Be verbose, and explain line by line, if needed.",
+					"* Use Markdown.",
+					"",
+					"${pre}",
+					"${text}",
+				],
+			},
+			"command": {
+				"cmd": "output",
+				"syntax": "Markdown"
+			},
+		},
 	],
 }
