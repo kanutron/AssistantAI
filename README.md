@@ -1,30 +1,38 @@
-# AssistantAI Sublime Text plugin
+# AssistantAI
 
-This Sublime Text plugin is a general purpose implementation of an HTTP API client that allows to perform text manipulation with remote API responses, as a result to requests based on selected text and optional user input.
+A Sublime Text plugin.
 
-A common use case is to consume API for Generative AI like ChatGPT or OpenAI Codex to complete, edit, comment or explain selected code chunks. Another example is to consume GitHub, Gitea or similar VCS server's API so add Issues, PR and similar workflows. 
+This plugin is a general purpose implementation of an HTTP API client that allows perform text manipulation with remote API responses, as a result to requests based on selected text and optional user input.
+
+A common use case is to consume API of, for instance, Generative AI like ChatGPT or OpenAI Codex, to complete, edit, comment or explain selected code chunks. Another example is to consume GitHub, Gitea or similar VCS server's API to add Issues, PR and similar workflows while you code. 
 
 <p align="center">
 	<img src="screenshot.gif" alt="AssistantAI in action"></img>
 </p>
 
-AssistantAI can be easily extended in functionalities by other package developers, providing plugins where the actual server and prompt templates are defined, by means of specified JSON files in Sublime Settings format, where servers, endpoints, prompt templates and credentials placeholders are provided.
+AssistantAI can be extended by the user or by other packages, providing servers, endpoints, prompt templates and credentials placeholders, defined in Sublime Settings files, in JSON.
 
 # Usage
 
-Once you installed AssistantAI you will be able to use it as described in this section.
+Once installed, invoke `AssistantAI` from the command palette, select a prompt from the presented list and follow it's flow.
 
-The general usage is simple:
+Prompts are offered based on the context (configured servers, selected text, buffer syntax, available content, etc.), and as per specifications provided by the prompt it self.
 
-- Select a text region (i.e.: A code function or Markdown section).
-- Command Palette > AssistantAI (or the keyboard shortcut if you set up one).
-- `AssistantAI` will show a quick panel with available **prompts**.
-- Choose the desired prompt. If the prompt needs, **inputs**, those will be requested using the UI.
-- When several **servers** with valid **endpoints** qualifies for the selected prompt and the current context (syntax, selections, inputs, etc.), a list of endpoints is given.
+Without any configured server, there will be no prompts available.
 
-Once AssistantAI have a prompt, all needed inputs and the endpoint is selected, it builds an HTTP request based on that and makes the network request.
+The general flow is simple. For instance:
 
-The response is parsed based on the endpoint specification and the specified **AssistantAI command** is executed.
+- Select a text region (i.e.: A code function, or Markdown section).
+- Command Palette > `AssistantAI` (or the keyboard shortcut if you set up one).
+- Select a **prompt**.
+- If the prompt needs additional **inputs**, those will be requested using the UI.
+- When several **servers** with valid **endpoints** qualifies for the selected prompt, a list of endpoints is presented.
+
+Once AssistantAI have a prompt, with all needed inputs and the target endpoint is selected, it builds an HTTP payload based on that and makes the network request.
+
+The response is parsed based on the endpoint specification and its specified **command** is executed.
+
+The prompt may specify another action instead of text manipulation (replace, append, insert), such as show the response in an Output Panel, or a new Buffer.
 
 As an example, consider this flow using the bundled OpenAI server endpoints definition (requires credentials) plugin while editing a Python file:
 
@@ -33,15 +41,17 @@ As an example, consider this flow using the bundled OpenAI server endpoints defi
 - *Since only one endpoint qualifies, a request is made to OpenAI without further inputs*
 - The python docstring is added to the selected function as returned by ChatGPT
 
-# What's included?
+# What's included with this plugin?
 
-AssistantAI includes the following definitions.
+The plugin implements the parser of the settings files where the servers, prompts and credentials are configured (by this package, another package, or the user). Manages the filtering of the prompts that are available given a context, and takes care of the API requests, building payloads, parsing responses, and performing the text manipulation.
+
+Besides the plugin implementation, AssistantAI includes the following definitions of servers and prompts.
 
 ## Servers
 
 Servers are definitions of network resources that AssistantAI can consume using HTTP requests. Includes the URL, timeout and a description.
 
-Each server must specify one or more endpoints which includes what are the possible request payloads, declarative instructions on how to build it based on the prompt user inputs (i.e.: selected text, or additional inputs the user is prompted for).
+Each server must specify one or more endpoints which includes what are the possible request payloads structures, declarative instructions on how to build it based on the prompt user inputs (i.e.: selected text, or additional inputs the user is prompted for).
 
 AssistantAI reads the configuration seeking for servers definitions, and considers a server to be available when all required credentials are configured by the user (i.e.: API TOKENS).
 
@@ -59,13 +69,13 @@ OpenAI server definition that allows consuming the API with three end points:
 
 Gitea is an open source replacement of GitHub, less sophisticated and much lightweight, which you can deploy in your own infrastructure. It provides an API to interact with it, allows among many other workflows, to create repositories, Issues and PRs.
 
-This Server definition is a WIP yet to be released. 
+This Server definition is WIP yet to be released. 
 
 ## Prompts
 
-Prompts are request templates that the user must fill with the variables when editing using Sublime Text. It's a stright forward process.
+Prompts are request templates that the user must fill with the variables when editing using Sublime Text. It's a straight forward process.
 
-The required variables are quite flexible and typically includes `text`, representing the selected text if any.
+The required variables are quite flexible and typically includes `text`, representing the selected text, if any.
 
 Once the user invokes a prompt, it must resolve all required inputs if not yet solved automatically. 
 
@@ -73,7 +83,7 @@ A request is then build and send to the available endpoint, or the one selected 
 
 For instance, if only `text` is required by the prompt, the user must have selected text for the prompt to be usable. 
 
-If the prompt is limited to `syntax`, the current buffer must be from that required syntax.
+If the prompt is limited to `syntax` (i.e.: Python), the current buffer must be from that required syntax.
 
 Available prompts out of the box with AssistantAI includes the following.
 
@@ -91,7 +101,7 @@ Those prompts requires at least one server endpoint that accepts `text` as input
 
 A set of prompts commonly used while editing python code are bundled in AssistantAI.
 
-- **Add docstring**: selecting a function and invoking this prompt, a request to available endpoints will result in the python function being populated with a `docstring`.
+- **Add docstring**: selecting a python function and invoking this prompt, a request will result in the python function being populated with a `docstring`.
 - **Add comments**: will comment line by line the selected python code.
 - **Explain**: will open the output panel with a verbose explanation of the selected code.
 
