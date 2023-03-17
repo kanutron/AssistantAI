@@ -218,7 +218,7 @@ Each server may provide one or more endpoints.
 
 They are key-value pairs used by server endpoints. Configured on each plugin settings file. 
 
-If you install **AssistantAI-OpenAI** plugin you will have to setup this:
+If you install **AssistantAI** and intent to use OpenAI API, you will have to setup this:
 
 ```json
 {
@@ -230,7 +230,7 @@ If you install **AssistantAI-OpenAI** plugin you will have to setup this:
 
 The key `api_key` is later used by the server specification as a variable that will be expanded in a HTTP header.
 
-Each AsistantAI plugin providing a server specification (like AssistantAI-OpenAI) will require you to set up the credentials in your user-defined settings in order to enable the server. 
+Each server specification will require you to set up the credentials in your user-defined settings in order to enable the server. 
 
 ## Prompt
 
@@ -318,5 +318,4 @@ I been learning to code Sublime Text plugins by:
 - Reading the code from CodexAI plugin from OpenAI
 - Reading the code from https://github.com/yaroslavyaroslav/OpenAI-sublime-text/tree/master
 - Interacting with ChatGPT (using this plugin!)
-- Reading the docs from Sublime API reference and Package Control docsAssistantAI
-[screenshort.gif]: 
+- Reading the docs from Sublime API reference and Package Control docs.
