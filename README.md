@@ -4,7 +4,9 @@ This Sublime Text plugin is a general purpose implementation of an HTTP API clie
 
 A common use case is to consume API for Generative AI like ChatGPT or OpenAI Codex to complete, edit, comment or explain selected code chunks. Another example is to consume GitHub, Gitea or similar VCS server's API so add Issues, PR and similar workflows. 
 
-![][screenshot.gif]
+<p align="center">
+	<img src="screenshot.gif" alt="AssistantAI in action"></img>
+</p>
 
 AssistantAI can be easily extended in functionalities by other package developers, providing plugins where the actual server and prompt templates are defined, by means of specified JSON files in Sublime Settings format, where servers, endpoints, prompt templates and credentials placeholders are provided.
 
