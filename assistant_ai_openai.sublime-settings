@@ -1,0 +1,172 @@
+{
+	// add your credentials in user settings of this package
+	"credentials": {
+		// you should add your API key obtained from https://platform.openai.com/account/api-keys
+		"api_key": null
+	},
+
+	// add your custom prompts
+	"prompts": [],
+
+	// add your custom servers
+	"servers": [],
+
+	// prompts provided by this package (OpenAI)
+	"default_prompts": [
+		{
+			"id": "continue_selected_text",
+			"name": "Continue selected text",
+			"description": "Given a selected text, continue writing from there.",
+			"required_inputs": ["text"],
+			"required_endpoints": [
+				"openai/completions",
+				"openai/chat_completions"
+			],
+			"params": {
+				"temperature": 1.0,
+				"max_tokens": 1800,
+			},
+			"command": "append",
+		},
+		{
+			"id": "edit_selected_text",
+			"name": "Edit selected text",
+			"description": "Give an instruction to change the selected text.",
+			"required_inputs": ["text", "instruction"],
+			"required_endpoints": ["openai/edits"],
+			"params": {
+				"temperature": 1.0,
+				"max_tokens": 1800,
+			},
+			"command": "replace",
+		},
+		{
+			"id": "ask_change_code",
+			"name": "Ask for a change to ${syntax} text",
+			"description": "Give an instruction to change the selected ${syntax} text.",
+			"required_inputs": ["text", "instruction"],
+			"required_endpoints": ["openai/chat_completions"],
+			"vars": {
+				"text": [
+					"The following is a portion of ${syntax}.",
+					"Make these changes:",
+					"${instruction}.",
+					"Return only the edited ${syntax} text:",
+					"",
+					"${text}",
+				],
+			},
+			"params": {
+				"temperature": 1.0,
+				"max_tokens": 1800,
+			},
+			"command": "replace",
+		},
+	],
+
+	// server specs provided by this package (OpenAI)
+	"default_servers": [
+		{
+			"id": "openai",
+			"name": "OpenAI",
+			"url": "https://api.openai.com:443",
+			"timeout": 60,
+			"required_credentials": ["api_key"],
+			"headers": {
+				"Authorization": "Bearer ${api_key}",
+				"Content-Type": "application/json",
+				"cache-control": "no-cache",
+			},
+			"endpoints": {
+				"completions": {
+					"name": "Completions",
+					"method": "POST",
+					"resource": "/v1/completions",
+					"required_vars": ["text"],
+					"valid_params": {
+						"model": "string",
+						"prompt": "string",
+						"suffix": "string",
+						"max_tokens": "integer",
+						"temperature": "number",
+						"top_p": "number",
+						"n": "integer",
+						"stream": "boolean",
+						"logprobs": "integer",
+						"echo": "boolean",
+						"stop": "string",
+						"presence_penalty": "number",
+						"frequency_penalty": "number",
+						"best_of": "integer",
+						"logit_bias": "object",
+						"user": "string",
+					},
+					"request": {
+						"model": "text-davinci-001",
+						"prompt": "${text}",
+					},
+					"response": {
+						"error": "error",
+						"output": "choices/0/text",
+					},
+				},
+				"chat_completions": {
+					"name": "Chat Completions",
+					"method": "POST",
+					"resource": "/v1/chat/completions",
+					"required_vars": ["text"],
+					"valid_params": {
+						"model": "string",
+						"messages": "string",
+						"temperature": "number",
+						"top_p": "number",
+						"n": "integer",
+						"stream": "boolean",
+						"stop": "string",
+						"max_tokens": "integer",
+						"presence_penalty": "number",
+						"frequency_penalty": "number",
+						"logit_bias": "object",
+						"user": "string",
+					},
+					"request": {
+						"model": "gpt-3.5-turbo",
+						"messages": [
+							{
+								"role": "user",
+								"content": "${text}",
+							}
+						],
+					},
+					"response": {
+						"error": "error",
+						"output": "choices/0/message/content",
+					},
+				},
+				"edits": {
+					"name": "Edits",
+					"method": "POST",
+					"resource": "/v1/edits",
+					"required_vars": ["text", "instruction"],
+					"valid_params": {
+						"model": "string",
+						"input": "string",
+						"instruction": "string",
+						"n": "integer",
+						"temperature": "float",
+						"top_p": "number",
+					},
+					"request": {
+						"model": "text-davinci-edit-001",
+						"input": "${text}",
+						"instruction": "${instruction}",
+					},
+					"response": {
+						"error": "error",
+						"output": "choices/0/text",
+					},
+				},
+			}
+		},
+	]
+}

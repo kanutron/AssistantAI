@@ -1,0 +1,63 @@
+{
+	// add your custom prompts here
+	"prompts": [],
+
+	// prompts provided by this package
+	"default_prompts": [
+		{
+			"id": "python_add_docstring",
+			"name": "Add docstring",
+			"description": "Add docstring to selected ${syntax} function.",
+			"required_inputs": ["text"],
+			"required_syntax": ["python"],
+			"vars": {
+				"text": [
+					"Add the docstring to the following ${syntax} code following theses rules:",
+					"* Return only the edited ${syntax} code.",
+					"* Do not alter the code.",
+					"",
+					"${text}",
+				],
+			},
+			"command": "replace",
+		},
+		{
+			"id": "python_add_comments",
+			"import": "python_add_docstring", // import previous prompt
+			"name": "Add comments",
+			"description": "Add comments to selected ${syntax} code.",
+			"vars": {
+				"text": [
+					"Comment the lines to the following ${syntax} code following theses rules:",
+					"* Return only the edited ${syntax} code.",
+					"* Do not alter the code.",
+					"",
+					"${text}",
+				],
+			},
+		},
+		{
+			"id": "python_explain_previous_lines",
+			"name": "Explain previous lines",
+			"description": "Explain the previous 32 lines of code.",
+			"required_inputs": [],
+			"required_context": {
+				"unit": "lines",
+				"pre_size": 32
+			},
+			"vars": {
+				"text": [
+					"Explain the following ${syntax} code following these rules:",
+					"* Be verbose, and explain line by line, if needed.",
+					"* Use Markdown to refer to variables or other symbols.",
+					"",
+					"${pre}",
+				],
+			},
+			"command": {
+				"cmd": "output",
+				"syntax": "Markdown"
+			},
+		},
+	],
+}

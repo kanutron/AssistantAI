@@ -30,7 +30,41 @@
 									"default": "[\n\t$0\n]\n",
 								}
 							},
-
+							{
+								"caption": "-",
+								"id": "separator"
+							},
+							{
+								"caption": "OpenAI Server Settings",
+								"command": "edit_settings",
+								"args":
+								{
+									"base_file": "${packages}/AssistantAI/assistant_ai_openai.sublime-settings",
+									"default": "{\n\t\"credentials\": {\n\t\t\"api_key\": null  // you should add your API key obtained from https://platform.openai.com/account/api-keys\n\t},\n}\n"
+								}
+							},
+							{
+								"caption": "Gitea Server Settings (WIP)",
+								"command": "edit_settings",
+								"args":
+								{
+									"base_file": "${packages}/AssistantAI/assistant_ai_gitea.sublime-settings",
+									"default": "{\n\t$0\n}\n"
+								}
+							},
+							{
+								"caption": "-",
+								"id": "separator"
+							},
+							{
+								"caption": "Python Prompts",
+								"command": "edit_settings",
+								"args":
+								{
+									"base_file": "${packages}/AssistantAI/assistant_ai_python.sublime-settings",
+									"default": "{\n\t$0\n}\n"
+								}
+							}
 						]
 					}
 				]

@@ -2,48 +2,109 @@
 
 This Sublime Text plugin is a general purpose implementation of an HTTP API client that allows to perform text manipulation with remote API responses, as a result to requests based on selected text and optional user input.
 
-A common use case is to consume API for Generative AI like ChatGPT or OpenAI Codex to complete, edit, comment or explain selected code chunks.
+A common use case is to consume API for Generative AI like ChatGPT or OpenAI Codex to complete, edit, comment or explain selected code chunks. Another example is to consume GitHub, Gitea or similar VCS server's API so add Issues, PR and similar workflows. 
 
-AssistantAI requires additional plugins where the actual server and prompt templates are provided. Everything is configured in Sublime Settings JSON files, including servers, endpoints, prompt templates and credentials.
-
-Check these AssistantAI plugins:
-
-- [**AssistantAI-OpenAI**](https://github.com/kanutron/AssistantAI-OpenAI): provides specifications of OpenAI servers and the edits, completions, and chat endpoints. Also provides basic prompts for interacting with ChatGPT and their text models.
-- [**AssistantAI-Python**](https://github.com/kanutron/AssistantAI-Python): provides prompt specification to make Python code manipulation using any available endpoint compatible with those prompt specifications. OpenAI server is one of those compatible endpoints. 
+AssistantAI can be easily extended in functionalities by other package developers, providing plugins where the actual server and prompt templates are defined, by means of specified JSON files in Sublime Settings format, where servers, endpoints, prompt templates and credentials placeholders are provided.
 
 # Usage
 
-Once you installed AssistantAI and at least one plugin providing Server specification, you will be able to use it.
+Once you installed AssistantAI you will be able to use it as described in this section.
 
 The general usage is simple:
 
 - Select a text region (i.e.: A code function or Markdown section).
-- Hit the configured key map (or Command Palette > AssistantAI).
+- Command Palette > AssistantAI (or the keyboard shortcut if you set up one).
 - `AssistantAI` will show a quick panel with available **prompts**.
-- Choose the desired prompt. If the prompt needs, **inputs**, those will be requested using UI.
+- Choose the desired prompt. If the prompt needs, **inputs**, those will be requested using the UI.
 - When several **servers** with valid **endpoints** qualifies for the selected prompt and the current context (syntax, selections, inputs, etc.), a list of endpoints is given.
 
 Once AssistantAI have a prompt, all needed inputs and the endpoint is selected, it builds an HTTP request based on that and makes the network request.
 
 The response is parsed based on the endpoint specification and the specified **AssistantAI command** is executed.
 
-As an example, consider this flow using `AssistantAI-OpenAI` plugin while editing a Python file:
+As an example, consider this flow using the bundled OpenAI server endpoints definition (requires credentials) plugin while editing a Python file:
 
 - Select a python function
 - Ask AssistantAI for the prompt "Add python docstring"
 - *Since only one endpoint qualifies, a request is made to OpenAI without further inputs*
 - The python docstring is added to the selected function as returned by ChatGPT
 
+# What's included?
+
+AssistantAI includes the following definitions.
+
+## Servers
+
+Servers are definitions of network resources that AssistantAI can consume using HTTP requests. Includes the URL, timeout and a description.
+
+Each server must specify one or more endpoints which includes what are the possible request payloads, declarative instructions on how to build it based on the prompt user inputs (i.e.: selected text, or additional inputs the user is prompted for).
+
+AssistantAI reads the configuration seeking for servers definitions, and considers a server to be available when all required credentials are configured by the user (i.e.: API TOKENS).
+
+AssisntantAI includes currently the following server and endpoints definitions.
+
+### OpenAI
+
+OpenAI server definition that allows consuming the API with three end points:
+
+- Edits
+- Completions
+- Chat completions (the one powering ChatGPT)
+
+### Gitea
+
+Gitea is an open source replacement of GitHub, less sophisticated and much lightweight, which you can deploy in your own infrastructure. It provides an API to interact with it, allows among many other workflows, to create repositories, Issues and PRs.
+
+This Server definition is a WIP yet to be released. 
+
+## Prompts
+
+Prompts are request templates that the user must fill with the variables when editing using Sublime Text. It's a stright forward process.
+
+The required variables are quite flexible and typically includes `text`, representing the selected text if any.
+
+Once the user invokes a prompt, it must resolve all required inputs if not yet solved automatically. 
+
+A request is then build and send to the available endpoint, or the one selected by the user if more than one is available.
+
+For instance, if only `text` is required by the prompt, the user must have selected text for the prompt to be usable. 
+
+If the prompt is limited to `syntax`, the current buffer must be from that required syntax.
+
+Available prompts out of the box with AssistantAI includes the following.
+
+### OpenAI
+
+A set of generic prompts are provided if OpenAI server is enabled (i.e.: credentials are configured):
+
+- Continue text from end of selection
+- Ask to make a change on selection
+- Ask to make a change on selection using Chat end point
+
+Those prompts requires at least one server endpoint that accepts `text` as input, or `text` + `instruction`.
+
+### Python
+
+A set of prompts commonly used while editing python code are bundled in AssistantAI.
+
+- **Add docstring**: selecting a function and invoking this prompt, a request to available endpoints will result in the python function being populated with a `docstring`.
+- **Add comments**: will comment line by line the selected python code.
+- **Explain**: will open the output panel with a verbose explanation of the selected code.
+
+Those prompts requires at least one server that accepts `text` as input.
+
 # Installation
+
+The plugin is intended to be published in Package Control. When published, further instructions will be given here.
 
 Install this plugin and you will have available the following:
 
-- `Settings` > `Package Settings` > `AssistantAI` > `Settings`
-- `Settings` > `Package Settings` > `AssistantAI` > `Key Bindings`
+- The `AssistantAI` command in the command palette.
+- `Settings` > `Package Settings` > `AssistantAI` > `Settings`.
+- `Settings` > `Package Settings` > `AssistantAI` > `Key Bindings` (the default is commented).
+- The servers and prompts described in previous section.
 
-The `AssistantAI` command in the command palette.
-
-==TODO==: publish in package control so installation is straight forward.
+Currently, at the very least, you should configure the API KEY of OpenAI to play with the plugin.
 
 ## Settings
 
@@ -62,9 +123,6 @@ If no prompts are available, `AssistantAI` command does nothing else than show a
 # Adding Servers and Prompts
 
 You can add your own servers using JSON settings (i.e.: `Settings` > ... > `AssistantAI` > `Settings`), but the intended use is to install AssistantAI plugins that provides complex and reusable server and prompt specifications.
-
-- **AssistantAI-OpenAI** [here](https://github.com/kanutron/AssistantAI-OpenAI)
-- **AssistantAI-Python** [here](https://github.com/kanutron/AssistantAI-Python)
 
 # Understanding the concepts
 
@@ -205,6 +263,15 @@ Command can be;
 # Contributing
 
 If you want to contribute, feel free to open an Issue or send your PR.
+
+There are four types of valuable contributions:
+
+- Share your experience and creativity by opening Issues with bug reports and feature requests.
+- Send PR to improve or fix the code. Ideally, as a response of an open issue.
+- Add Servers, Prompts providing a specific and working `assistant_ai_{NAME}.sublime-settings` file. Ideally using a PR.
+- Developing a Sublime Text plugin (or updating your current one) that provides a `assistant_ai_{NAME}.sublime-settings`.
+
+For an example `assistant_ai_{NAME}.sublime-settings` check the [OpenAI settings](assistant_ai_openai.sublime-settings) files that includes prompts and server endpoints specifications.
 
 The code is pretty much tidy now. But there are some missing features like:
 

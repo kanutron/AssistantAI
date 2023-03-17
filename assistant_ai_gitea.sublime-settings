@@ -1,0 +1,17 @@
+{
+	// credentials
+	"credentials": {},
+
+	// add your custom prompts here
+	"prompts": [],
+
+	// add your custom servers here
+	"servers": [],
+
+	// prompts provided by this package
+	"default_prompts": [],
+
+	// servers provided by this package
+	// TODO: this server API is pending to be defined. WIP
+	"default_servers": [],
+}
