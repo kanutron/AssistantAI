@@ -8,7 +8,7 @@ from .assistant_settings import AssistantAISettings
 from .assistant_thread import AssistantThread
 
 settings = AssistantAISettings()
-VERSION_ASSISTANT_AI = "1.0.1"
+VERSION_ASSISTANT_AI = "1.0.2"
 VERSION_ST = int(sublime.version())
 
 def plugin_loaded():

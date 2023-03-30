@@ -12,6 +12,10 @@ A common use case is to consume API of, for instance, Generative AI like ChatGPT
 
 AssistantAI can be extended by the user or by other packages, providing servers, endpoints, prompt templates and credentials placeholders, defined in Sublime Settings files, in JSON.
 
+# Privacy warning
+
+Selected code may be sent to the remote and third party API servers for processing (i.e.: OpenAI, see below), so make sure you have the necessary permissions to do so.
+
 # Usage
 
 Once installed, invoke `AssistantAI` from the command palette, select a prompt from the presented list and follow it's flow.
@@ -64,6 +68,8 @@ OpenAI server definition that allows consuming the API with three end points:
 - Edits
 - Completions
 - Chat completions (the one powering ChatGPT)
+
+Please note that OpenAI is a paid service, and you will need to have an API key and sufficient credit to use the plugin.
 
 ### Gitea
 
