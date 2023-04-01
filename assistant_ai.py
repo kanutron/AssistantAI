@@ -410,6 +410,7 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
         for req_in in required_inputs:
             if req_in in kwargs:
                 continue  # already solved input
+            # follow prompt spects for required inputs (if any is given)
             if inputs_specs and req_in in inputs_specs:
                 input_spec = inputs_specs.get(req_in)
                 input_type = input_spec.get('type', 'text')
