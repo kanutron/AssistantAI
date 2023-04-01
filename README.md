@@ -14,7 +14,7 @@ AssistantAI can be extended by the user or by other packages, providing servers,
 
 # Privacy warning
 
-Selected code may be sent to the remote and third party API servers for processing (i.e.: OpenAI, see below), so make sure you have the necessary permissions to do so.
+Selected code, file path, name, file size and symbols may be sent to the remote third party API servers for processing (i.e.: OpenAI, see below), so make sure you have the necessary permissions to do so.
 
 # Usage
 
