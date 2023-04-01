@@ -160,13 +160,11 @@ class AssistantAiCommand(AssistantAiTextCommand):
         timeout = thread.timeout
         icon_warn = "⚠️"
         icon_progress_steps = ["⬜️","◻️","◽️","▫️","◽️","◻️",]
-
         # If we ran out of time, let user know, stop checking on the thread
         if seconds > timeout:
             msg = f"AssistantAI: {icon_warn} Query ran out of time! {timeout}s"
             sublime.status_message(msg)
             return
-
         # While the thread is running, show them some feedback,
         # and keep checking on the thread
         if thread.running:
@@ -178,40 +176,44 @@ class AssistantAiCommand(AssistantAiTextCommand):
             sublime.set_timeout(lambda:
                 self.handle_thread(thread, seconds + 1), 1000)
             return
-
         # If we finished with no result, something is wrong
         if not thread.result:
             sublime.status_message(f"AssistantAI: {icon_warn} Something is wrong with remote server - aborting")
             return
-
         # Collect the result and act as per command spec
         sublime.status_message("AssistantAI: Done!")
         error = thread.result.get('error')
-        output = thread.result.get('output')
         if error:
             sublime.status_message(f"AsistantAI: {icon_warn} {error}")
-        if output:
-            command = thread.prompt.get('command', {'cmd':'replace'})
-            if isinstance(command, str):
-                command = {'cmd': command}
-            # if the command spec from prompt forces a syntax, take that
-            # otherwise, use the prompt var, or 'Markdown'
-            if 'syntax' not in command:
-                command['syntax'] = thread.vars.get('syntax', 'Markdown')
-            cmds_map = {
-                'replace': 'assistant_ai_replace_text',
-                'append': 'assistant_ai_append_text',
-                'insert': 'assistant_ai_insert_text',
-                'output': 'assistant_ai_output_panel',
-                'create': 'assistant_ai_create_view',
-            }
-            cmd = cmds_map.get(command.get('cmd', 'replace'))
-            if cmd:
-                self.view.run_command(cmd, {
-                    "region": [thread.region.begin(), thread.region.end()],
-                    "text": output,
-                    "kwargs": command
-                })
+            return
+        output = thread.result.get('output')
+        if not output:
+            sublime.status_message(f"AsistantAI: {icon_warn} No response.")
+            return
+        # Get the command to exectue as per prompt specs
+        cmds_map = {
+            'replace': 'assistant_ai_replace_text',
+            'append': 'assistant_ai_append_text',
+            'insert': 'assistant_ai_insert_text',
+            'output': 'assistant_ai_output_panel',
+            'create': 'assistant_ai_create_view',
+        }
+        prompt_command = thread.prompt.get('command', {'cmd':'replace'})
+        if isinstance(prompt_command, str):
+            prompt_command = {'cmd': prompt_command}
+        command = cmds_map.get(prompt_command.get('cmd', 'replace'))
+        if not command:
+            return
+        # if the command spec from prompt forces a syntax, take that
+        # otherwise, use the prompt var, or 'Markdown'
+        if 'syntax' not in prompt_command:
+            prompt_command['syntax'] = thread.vars.get('syntax', 'Markdown')
+        # run the specified command. kwargs are the params of the command specified in the prompt (if any)
+        self.view.run_command(command, {
+            "region": [thread.region.begin(), thread.region.end()],
+            "text": output,
+            "kwargs": prompt_command
+        })
 
     def quick_panel_prompts(self, region, syntax=None, **kwargs):
         """
