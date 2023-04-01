@@ -210,7 +210,6 @@ class AssistantAISettings:
                     prompts[pid]['vars'] = prompt_vars
         return prompts
 
-
     def process_prompts_import(self, prompts):
         """
         This function processes all loaded prompts returns a dictionary of processed prompts.
@@ -231,7 +230,6 @@ class AssistantAISettings:
             else:
                 del(processed[p])
         return processed
-
 
     @staticmethod
     def prompt_import(prompts, prompt, chain=None):
