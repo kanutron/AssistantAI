@@ -151,11 +151,23 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
         }
 
     def context_to_kwargs(self, **kwargs):
-        # TODO: besides syntax, get also file name, and more contextual vars
-        # get the syntax
         if 'syntax' not in kwargs:
             syntax = self.view.syntax()
-            kwargs['syntax'] = syntax.name if syntax else None
+            kwargs['syntax'] = syntax.name if syntax else ''
+        if 'file' not in kwargs:
+            win = self.view.window()
+            if win:
+                kwargs.update(win.extract_variables())
+        if 'file_size' not in kwargs:
+            kwargs['file_size'] = str(self.view.size())
+        if 'file_encoding' not in kwargs:
+            kwargs['file_encoding'] = str(self.view.encoding())
+        if 'file_line_endings' not in kwargs:
+            kwargs['file_line_endings'] = str(self.view.line_endings())
+        if 'symbols' not in kwargs:
+            syms = [s for _, s in self.view.symbols()]
+            if syms:
+                kwargs['symbols'] = ', '.join(set(syms))
         return kwargs
 
     def get_region(self):
