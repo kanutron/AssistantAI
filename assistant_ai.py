@@ -151,6 +151,20 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
         }
 
     def context_to_kwargs(self, **kwargs):
+        """
+        Takes in keyword arguments and returns a dictionary of context settings.
+
+        If 'syntax' is not given, it sets the syntax to the view syntax name or an empty string.
+        If 'file' is not given, it sets the file to the extracted variables from the view window.
+        If 'file_size' is not given, it sets the file size to the view size.
+        If 'file_encoding' is not given, it sets the file encoding to the view encoding as a string.
+        If 'file_line_endings' is not given, it sets the file line endings to the view line endings as a string.
+        If 'file_symbols' is not given, it sets the file symbols to a comma-separated string of the view symbols.
+        If 'file_toc' is not given, it sets file_toc to a string of all the view symbols separated by newlines.
+
+        Returns:
+        A dictionary of context settings.
+        """
         if 'syntax' not in kwargs:
             syntax = self.view.syntax()
             kwargs['syntax'] = syntax.name if syntax else ''
@@ -164,17 +178,28 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
             kwargs['file_encoding'] = str(self.view.encoding())
         if 'file_line_endings' not in kwargs:
             kwargs['file_line_endings'] = str(self.view.line_endings())
-        if 'symbols' not in kwargs:
+        if 'file_symbols' not in kwargs:
+            syms = [s.strip() for _, s in self.view.symbols()]
+            if syms:
+                kwargs['file_symbols'] = ', '.join(set(syms))
+        if 'file_toc' not in kwargs:
             syms = [s for _, s in self.view.symbols()]
             if syms:
-                kwargs['symbols'] = ', '.join(set(syms))
+                kwargs['file_toc'] = '\n'.join(syms)
         return kwargs
 
     def get_region(self):
+        """
+        Returns a Sublime Region object representing the selected region in the view.
+        If several regions are selected, returns the minimum region that covers all selected regions.
+
+        :return: Sublime Region object
+        """
         regions = self.view.sel()
         r_start = regions[0].begin()
         r_end = regions[-1].end()
         return sublime.Region(r_start, r_end)
+
 
 class AssistantAiAsyncCommand(AssistantAiTextCommand):
     global settings
