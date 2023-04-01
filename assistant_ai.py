@@ -96,12 +96,10 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
             pre_size = rc.get('pre_size')
             if pre_size:
                 reg_pre = sublime.Region(region.begin() - pre_size, region.begin())
-                # reg_pre = self.view.expand_by_class(reg_pre, sublime.CLASS_LINE_START)
                 pre = self.view.substr(reg_pre)
             post_size = rc.get('post_size')
             if post_size:
                 reg_post = sublime.Region(region.end(), region.end() + post_size)
-                # reg_post = self.view.expand_by_class(reg_post, sublime.CLASS_LINE_END)
                 post = self.view.substr(reg_post)
         elif rc.get('unit') == 'lines':
             pre_size = rc.get('pre_size')
