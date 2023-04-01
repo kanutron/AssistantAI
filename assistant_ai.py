@@ -37,7 +37,6 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
     - indent_text(text, indent): Indents a given text.
     - get_text_context(region, prompt): Given a region, return the selected text, and context pre and post such text.
     - get_text_context_size(region): returns a dict with the available context parts sizes.
-    - handle_thread(thread, seconds): recursivelly called itself to handle threaded (async) requests
     """
     def get_region_indentation(self, region):
         """
@@ -150,6 +149,20 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
             "text_chars": len(region),
             "text_lines": len(self.view.lines(region)),
         }
+
+    def context_to_kwargs(self, **kwargs):
+        # TODO: besides syntax, get also file name, and more contextual vars
+        # get the syntax
+        if 'syntax' not in kwargs:
+            syntax = self.view.syntax()
+            kwargs['syntax'] = syntax.name if syntax else None
+        return kwargs
+
+    def get_region(self):
+        regions = self.view.sel()
+        r_start = regions[0].begin()
+        r_end = regions[-1].end()
+        return sublime.Region(r_start, r_end)
 
 class AssistantAiAsyncCommand(AssistantAiTextCommand):
     global settings
@@ -348,21 +361,14 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
     global settings
 
     def run(self, edit, prompt=None, endpoint=None, **kwargs):
-        # get the syntax
-        if 'syntax' not in kwargs:
-            syntax = self.view.syntax()
-            kwargs['syntax'] = syntax.name if syntax else None
-        # TODO: besides syntax, get also file name, and more contextual vars
+        # ensure that kwargs have basic context
+        kwargs = self.context_to_kwargs(**kwargs)
         # ask user for a prompt to use
         if not prompt:
-            regions = self.view.sel()
-            r_start = regions[0].begin()
-            r_end = regions[-1].end()
-            region = sublime.Region(r_start, r_end)
             sublime.set_timeout_async(
-                functools.partial(self.quick_panel_prompts, region=region, **kwargs))
+                functools.partial(self.quick_panel_prompts, region=self.get_region(), **kwargs))
             return
-        # ask the user for the required inputs
+        # ask the user for the required inputs by the selected prompt
         required_inputs = prompt.get('required_inputs', ['text', ])
         required_inputs = [i.lower() for i in required_inputs if i != 'text']
         inputs_specs = prompt.get('inputs')
@@ -380,8 +386,8 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
                     return
             # generic input panel
             sublime.set_timeout_async(functools.partial(self.input_panel,
-                    key=req_in, caption=req_in.title(), prompt=prompt,
-                    endpoint=endpoint, **kwargs))
+                    key=req_in, caption=req_in.title(),
+                    prompt=prompt, endpoint=endpoint, **kwargs))
             return
         # ask user for an endpont to use (if > 1)
         if not endpoint:
