@@ -2,11 +2,11 @@ import functools
 import sublime
 import sublime_plugin
 
-# The global scope ensures that the settings can
-# be easily accessed from within all the classes.
 from .assistant_settings import AssistantAISettings
 from .assistant_thread import AssistantThread
 
+# The global scope ensures that the settings can
+# be easily accessed from within all the classes.
 settings = AssistantAISettings()
 VERSION_ASSISTANT_AI = "1.0.2"
 VERSION_ST = int(sublime.version())
@@ -35,7 +35,9 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
     Methods:
     - get_region_indentation(region): Returns the indentation of a given region.
     - indent_text(text, indent): Indents a given text.
+    - get_available_context(region): returns a dict with the available context.
     - get_context(region, prompt): Given a region, return the selected text, and context pre and post such text.
+    - handle_thread(thread, seconds): recursivelly called itself to handle threaded (async) requests
     """
     def get_region_indentation(self, region):
         """
@@ -149,8 +151,7 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
                 post = self.view.substr(reg_post)
         return text, pre, post
 
-
-class AssistantAiCommand(AssistantAiTextCommand):
+class AssistantAiAsyncCommand(AssistantAiTextCommand):
     global settings
 
     def handle_thread(self, thread, seconds=0):
@@ -251,6 +252,7 @@ class AssistantAiCommand(AssistantAiTextCommand):
         if not items:
             icon_warn = "⚠️"
             sublime.status_message(f"AssistantAI: {icon_warn} No available prompts here, in this context.")
+            return
         win = self.view.window()
         if win:
             win.show_quick_panel(items=items, on_select=on_select)
@@ -288,28 +290,11 @@ class AssistantAiCommand(AssistantAiTextCommand):
             sublime.status_message(f"AssistantAI: {icon_warn} No available endpoints for the selected prompt.")
         if len(items) == 1:
             on_select(0)
-        else:
-            win = self.view.window()
-            if win:
-                win.show_quick_panel(items=items, on_select=on_select)
-
-    def input_panel(self, key, caption, prompt, endpoint, **kwargs):
-        """
-        Displays an input panel to the user with a provided caption and waits for user input to be submitted.
-
-        :return: None
-        """
-        def on_done(text):
-            self.view.run_command('assistant_ai_prompt', {
-                "prompt": prompt,
-                "endpoint": endpoint,
-                key: text,
-                **kwargs
-            })
+            return
         win = self.view.window()
-        if win:
-            win.show_input_panel(caption=caption, initial_text="",
-                on_done=on_done, on_change=None, on_cancel=None)
+        if not win:
+            return
+        win.show_quick_panel(items=items, on_select=on_select)
 
     def quick_panel_list(self, key, items, prompt, endpoint, **kwargs):
         """
@@ -335,13 +320,32 @@ class AssistantAiCommand(AssistantAiTextCommand):
             sublime.status_message(f"AssistantAI: {icon_warn} No available items for {key}.")
         if len(items) == 1:
             on_select(0)
-        else:
-            win = self.view.window()
-            if win:
-                win.show_quick_panel(items=items, on_select=on_select)
+            return
+        win = self.view.window()
+        if not win:
+            return
+        win.show_quick_panel(items=items, on_select=on_select)
 
+    def input_panel(self, key, caption, prompt, endpoint, **kwargs):
+        """
+        Displays an input panel to the user with a provided caption and waits for user input to be submitted.
 
-class AssistantAiPromptCommand(AssistantAiCommand):
+        :return: None
+        """
+        def on_done(text):
+            self.view.run_command('assistant_ai_prompt', {
+                "prompt": prompt,
+                "endpoint": endpoint,
+                key: text,
+                **kwargs
+            })
+        win = self.view.window()
+        if not win:
+            return
+        win.show_input_panel(caption=caption, initial_text="",
+            on_done=on_done, on_change=None, on_cancel=None)
+
+class AssistantAiPromptCommand(AssistantAiAsyncCommand):
     global settings
 
     def run(self, edit, prompt=None, endpoint=None, **kwargs):
