@@ -359,10 +359,12 @@ class AssistantAISettings:
                 to_filter.add(p)
         return {k: v for k, v in prompts.items() if k not in to_filter}
 
-    def filter_prompts_by_syntax(self, prompts, syntax):
+    def filter_prompts_by_syntax(self, prompts, syntax=None):
         """
         Returns all loaded usable prompts filtering by syntax
         """
+        if not syntax or not isinstance(syntax, str):
+            return prompts
         to_filter = set()
         syntax = syntax.lower()
         for p, prompt in prompts.items():

@@ -216,7 +216,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             "kwargs": prompt_command
         })
 
-    def quick_panel_prompts(self, region, syntax=None, **kwargs):
+    def quick_panel_prompts(self, region, **kwargs):
         """
         Display a quick panel with all available prompts.
 
@@ -231,12 +231,10 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
                 "prompt": prompt,
                 **kwargs
             })
-        if not syntax:
-            syntax = ''
         # filter prompts by current state
         available_context = self.get_available_context(region)
         prompts = settings.prompts
-        prompts = settings.filter_prompts_by_syntax(prompts, syntax)
+        prompts = settings.filter_prompts_by_syntax(prompts, kwargs.get('syntax'))
         prompts = settings.filter_prompts_by_available_endpoints(prompts)
         prompts = settings.filter_prompts_by_available_context(prompts, available_context)
         icon = "♡"
@@ -244,9 +242,9 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
         items = []
         for p, prompt in prompts.items():
             name = prompt.get('name', prompt.get('id', '').replace('_', ' ').title())
-            name = sublime.expand_variables(name, {'syntax': syntax})
+            name = sublime.expand_variables(name, kwargs)
             desc = prompt.get('description', '')
-            desc = sublime.expand_variables(desc, {'syntax': syntax})
+            desc = sublime.expand_variables(desc, kwargs)
             ids.append(p)
             items.append([f"{icon} {name}", f"{desc} [{p.upper()}]"])
         if not items:
@@ -275,6 +273,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
                 **kwargs
             })
         endpoints = settings.get_endpoints_for_prompt(prompt)
+        # TODO: filter also endpoints by the context and variables
         icon = "♢"
         ids = []
         items = []
@@ -296,7 +295,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             return
         win.show_quick_panel(items=items, on_select=on_select)
 
-    def quick_panel_list(self, key, items, prompt, endpoint, **kwargs):
+    def quick_panel_list(self, key, items, **kwargs):
         """
         Displays a panel with a list of items to select, and upon selection,
         runs the 'assistant_ai_prompt' command with the selected item, as well as
@@ -310,8 +309,8 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
                 return
             text = items[index]
             self.view.run_command('assistant_ai_prompt', {
-                "prompt": prompt,
-                "endpoint": endpoint,
+                "prompt": kwargs.pop('prompt', None),
+                "endpoint": kwargs.pop('endpoint', None),
                 key: text,
                 **kwargs
             })
@@ -326,7 +325,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             return
         win.show_quick_panel(items=items, on_select=on_select)
 
-    def input_panel(self, key, caption, prompt, endpoint, **kwargs):
+    def input_panel(self, key, caption, **kwargs):
         """
         Displays an input panel to the user with a provided caption and waits for user input to be submitted.
 
@@ -334,8 +333,8 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
         """
         def on_done(text):
             self.view.run_command('assistant_ai_prompt', {
-                "prompt": prompt,
-                "endpoint": endpoint,
+                "prompt": kwargs.pop('prompt', None),
+                "endpoint": kwargs.pop('endpoint', None),
                 key: text,
                 **kwargs
             })
@@ -350,8 +349,10 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
 
     def run(self, edit, prompt=None, endpoint=None, **kwargs):
         # get the syntax
-        syntax = self.view.syntax()
-        syntax = syntax.name if syntax else None
+        if 'syntax' not in kwargs:
+            syntax = self.view.syntax()
+            kwargs['syntax'] = syntax.name if syntax else None
+        # TODO: besides syntax, get also file name, and more contextual vars
         # ask user for a prompt to use
         if not prompt:
             regions = self.view.sel()
@@ -359,7 +360,7 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
             r_end = regions[-1].end()
             region = sublime.Region(r_start, r_end)
             sublime.set_timeout_async(
-                functools.partial(self.quick_panel_prompts, region=region, syntax=syntax))
+                functools.partial(self.quick_panel_prompts, region=region, **kwargs))
             return
         # ask the user for the required inputs
         required_inputs = prompt.get('required_inputs', ['text', ])
@@ -393,7 +394,7 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
                 continue
             # TODO: hande_thread is not blocking, so we don't take advantadge of multi selection here.
             # BUG: when user selects multi text, the thread is overwritten. Complex fix ahead!
-            thread = AssistantThread(settings, prompt, endpoint, region, text, pre, post, syntax, kwargs)
+            thread = AssistantThread(settings, prompt, endpoint, region, text, pre, post, kwargs)
             thread.start()
             self.handle_thread(thread)
 

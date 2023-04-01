@@ -13,7 +13,7 @@ class AssistantThread(threading.Thread):
     running = False
     result = None
 
-    def __init__(self, settings, prompt, endpoint, region, text, pre, post, syntax, kwargs):
+    def __init__(self, settings, prompt, endpoint, region, text, pre, post, kwargs):
         super().__init__()
         self.settings = settings
         self.prompt = prompt
@@ -21,11 +21,11 @@ class AssistantThread(threading.Thread):
         self.region = region
         # prompt vars may add text
         self.timeout = endpoint.get('max_seconds', 60)
-        self.vars = self.prepare_vars(text, pre, post, syntax, kwargs)
+        self.vars = self.prepare_vars(text, pre, post, kwargs)
         self.data = self.prepare_data()
         self.conn = self.prepare_conn()
 
-    def prepare_vars(self, text, pre, post, syntax, kwargs):
+    def prepare_vars(self, text, pre, post, kwargs):
         """
         Prepares variables to be used in a prompt.
 
@@ -33,7 +33,6 @@ class AssistantThread(threading.Thread):
             text (str): The text to be displayed in the prompt.
             pre (str): The pre-text before text.
             post (str): The post-text after text.
-            syntax (str): The syntax of text.
             kwargs (dict): Any additional keyword arguments to be used.
 
         Returns:
@@ -44,7 +43,6 @@ class AssistantThread(threading.Thread):
             "text": text,
             "pre": pre,
             "post": post,
-            "syntax": syntax,
         }
         vars_.update(kwargs)
         # expand vars as defined by prompt/vars
