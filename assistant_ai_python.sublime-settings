@@ -7,6 +7,7 @@
 		{
 			"id": "python_add_docstring",
 			"name": "Add docstring",
+			"icon": "🐍",
 			"description": "Add docstring to selected ${syntax} function.",
 			"required_inputs": ["text"],
 			"required_syntax": ["python"],
@@ -39,8 +40,10 @@
 		{
 			"id": "python_explain_previous_lines",
 			"name": "Explain previous lines",
+			"icon": "🐍",
 			"description": "Explain the previous 32 lines of code.",
 			"required_inputs": [],
+			"required_syntax": ["python"],
 			"required_context": {
 				"unit": "lines",
 				"pre_size": 32
@@ -62,12 +65,10 @@
 		{
 			"id": "python_explain_selection",
 			"name": "Explain selected text",
+			"icon": "🐍",
 			"description": "Explain the selected code.",
 			"required_inputs": ["text"],
-			"required_context": {
-				"unit": "lines",
-				"pre_size": 1
-			},
+			"required_syntax": ["python"],
 			"vars": {
 				"text": [
 					"Explain the following ${syntax} code following these rules:",

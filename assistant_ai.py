@@ -198,7 +198,6 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
         r_end = regions[-1].end()
         return sublime.Region(r_start, r_end)
 
-
 class AssistantAiAsyncCommand(AssistantAiTextCommand):
     global settings
 
@@ -285,7 +284,6 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
         prompts = settings.filter_prompts_by_syntax(prompts, kwargs.get('syntax'))
         prompts = settings.filter_prompts_by_available_endpoints(prompts)
         prompts = settings.filter_prompts_by_available_context(prompts, context_size)
-        icon = "♡"
         ids = []
         items = []
         for p, prompt in prompts.items():
@@ -293,6 +291,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             name = sublime.expand_variables(name, kwargs)
             desc = prompt.get('description', '')
             desc = sublime.expand_variables(desc, kwargs)
+            icon = prompt.get('icon', "♡")
             ids.append(p)
             items.append([f"{icon} {name}", f"{desc} [{p.upper()}]"])
         if not items:
@@ -321,13 +320,12 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
                 **kwargs
             })
         endpoints = settings.get_endpoints_for_prompt(prompt)
-        # TODO: filter also endpoints by the context and variables
-        icon = "♢"
         ids = []
         items = []
         for e, endpoint in endpoints.items():
             name = endpoint.get('name', endpoint.get('id', '').replace('_', ' ').title())
             name_server = endpoint.get('name_server', '')
+            icon = endpoint.get('icon', "↯")
             url = endpoint.get('url', '')
             ids.append(e)
             items.append([f"{icon} {name_server} {name}", f"{url} [{e}]"])
