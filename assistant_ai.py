@@ -35,8 +35,8 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
     Methods:
     - get_region_indentation(region): Returns the indentation of a given region.
     - indent_text(text, indent): Indents a given text.
-    - get_available_context(region): returns a dict with the available context.
-    - get_context(region, prompt): Given a region, return the selected text, and context pre and post such text.
+    - get_text_context(region, prompt): Given a region, return the selected text, and context pre and post such text.
+    - get_text_context_size(region): returns a dict with the available context parts sizes.
     - handle_thread(thread, seconds): recursivelly called itself to handle threaded (async) requests
     """
     def get_region_indentation(self, region):
@@ -72,35 +72,7 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
             new += indent + line + "\n"
         return new
 
-    def get_available_context(self, region):
-        """
-        Returns the amount of characters and lines in the text surrounding a given region.
-
-        Args:
-            region: A tuple containing two integers indicating the start and end of a region.
-
-        Returns:
-            A dictionary with the following keys and values:
-                - "pre_chars": The number of characters before the start of the region.
-                - "pre_lines": The number of lines before the start of the region.
-                - "post_chars": The number of characters after the end of the region.
-                - "post_lines": The number of lines after the end of the region.
-                - "text_chars": The number of characters within the region.
-                - "text_lines": The number of lines within the region.
-        """
-        region = sublime.Region(*region)
-        pre = sublime.Region(0, region.begin())
-        post = sublime.Region(region.end(), self.view.size())
-        return {
-            "pre_chars": len(pre),
-            "pre_lines": len(self.view.lines(pre)),
-            "post_chars": len(post),
-            "post_lines": len(self.view.lines(post)),
-            "text_chars": len(region),
-            "text_lines": len(self.view.lines(region)),
-        }
-
-    def get_context(self, region, prompt):
+    def get_text_context(self, region, prompt):
         """
         Returns the text content before and after the region based on the given required context.
 
@@ -150,6 +122,34 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
                 reg_post = sublime.Region(lstart, lend)
                 post = self.view.substr(reg_post)
         return text, pre, post
+
+    def get_text_context_size(self, region):
+        """
+        Returns the amount of characters and lines in the text surrounding a given region.
+
+        Args:
+            region: A tuple containing two integers indicating the start and end of a region.
+
+        Returns:
+            A dictionary with the following keys and values:
+                - "pre_chars": The number of characters before the start of the region.
+                - "pre_lines": The number of lines before the start of the region.
+                - "post_chars": The number of characters after the end of the region.
+                - "post_lines": The number of lines after the end of the region.
+                - "text_chars": The number of characters within the region.
+                - "text_lines": The number of lines within the region.
+        """
+        region = sublime.Region(*region)
+        pre = sublime.Region(0, region.begin())
+        post = sublime.Region(region.end(), self.view.size())
+        return {
+            "pre_chars": len(pre),
+            "pre_lines": len(self.view.lines(pre)),
+            "post_chars": len(post),
+            "post_lines": len(self.view.lines(post)),
+            "text_chars": len(region),
+            "text_lines": len(self.view.lines(region)),
+        }
 
 class AssistantAiAsyncCommand(AssistantAiTextCommand):
     global settings
@@ -232,11 +232,11 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
                 **kwargs
             })
         # filter prompts by current state
-        available_context = self.get_available_context(region)
+        context_size = self.get_text_context_size(region)
         prompts = settings.prompts
         prompts = settings.filter_prompts_by_syntax(prompts, kwargs.get('syntax'))
         prompts = settings.filter_prompts_by_available_endpoints(prompts)
-        prompts = settings.filter_prompts_by_available_context(prompts, available_context)
+        prompts = settings.filter_prompts_by_available_context(prompts, context_size)
         icon = "♡"
         ids = []
         items = []
@@ -365,23 +365,24 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
         # ask the user for the required inputs
         required_inputs = prompt.get('required_inputs', ['text', ])
         required_inputs = [i.lower() for i in required_inputs if i != 'text']
+        inputs_specs = prompt.get('inputs')
         for req_in in required_inputs:
-            if req_in not in kwargs:
-                prompt_inputs = prompt.get('inputs')
-                if prompt_inputs and req_in in prompt_inputs:
-                    input_spec = prompt_inputs.get(req_in)
-                    input_type = input_spec.get('type', 'text')
-                    if input_type == 'list':
-                        input_items = input_spec.get('items', [])
-                        sublime.set_timeout_async(functools.partial(self.quick_panel_list,
-                            key=req_in, items=input_items,
-                            prompt=prompt, endpoint=endpoint, **kwargs))
-                        return
-                # generic input panel
-                sublime.set_timeout_async(functools.partial(self.input_panel,
-                        key=req_in, caption=req_in.title(), prompt=prompt,
-                        endpoint=endpoint, **kwargs))
-                return
+            if req_in in kwargs:
+                continue  # already solved input
+            if inputs_specs and req_in in inputs_specs:
+                input_spec = inputs_specs.get(req_in)
+                input_type = input_spec.get('type', 'text')
+                if input_type == 'list':
+                    input_items = input_spec.get('items', [])
+                    sublime.set_timeout_async(functools.partial(self.quick_panel_list,
+                        key=req_in, items=input_items,
+                        prompt=prompt, endpoint=endpoint, **kwargs))
+                    return
+            # generic input panel
+            sublime.set_timeout_async(functools.partial(self.input_panel,
+                    key=req_in, caption=req_in.title(), prompt=prompt,
+                    endpoint=endpoint, **kwargs))
+            return
         # ask user for an endpont to use (if > 1)
         if not endpoint:
             sublime.set_timeout_async(
@@ -389,7 +390,7 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
             return
         # for each selected region, perform a request
         for region in self.view.sel():
-            text, pre, post = self.get_context(region, prompt)
+            text, pre, post = self.get_text_context(region, prompt)
             if 'text' in required_inputs and len(text) < 1:
                 continue
             # TODO: hande_thread is not blocking, so we don't take advantadge of multi selection here.
