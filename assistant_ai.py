@@ -503,7 +503,6 @@ class AssistantAiAppendTextCommand(AssistantAiTextCommand):
         - new_line_before (bool, default=True): Whether to insert a new line before `text`.
         - new_line_after (bool, default=True): Whether to insert a new line after `text`.
         - preserve_indentation (bool, default=True): Whether to preserve the indentation of `region`.
-
         """
         if kwargs.get('strip_output', True):
             text = text.strip()
@@ -530,7 +529,6 @@ class AssistantAiInsertTextCommand(AssistantAiTextCommand):
 
         Returns:
         - None
-
         """
         if kwargs.get('strip_output', True):
             text = text.strip()
