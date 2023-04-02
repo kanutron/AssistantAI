@@ -114,7 +114,8 @@ class AssistantAISettings:
         for server in servers_all:
             sid = server.get('id', 'server_' + str(uuid.uuid4()))
             if not 'required_credentials' in server:
-                servers[sid] = server  # this server requires no credentials
+                servers[sid] = server
+                continue  # this server requires no credentials
             if isinstance(server['required_credentials'], str):
                 server['required_credentials'] = [server['required_credentials'],]
             for req_cred in server['required_credentials']:
@@ -200,14 +201,15 @@ class AssistantAISettings:
             for req_ep in prompt['required_endpoints']:
                 if req_ep in self.endpoints:
                     prompts[pid] = prompt
-
+            # ensure the prompt provides a 'vars' key
             for pid, prompt in prompts.items():
                 prompt_vars = prompt.get('vars', {})
-                if not prompt_vars:
-                    required_inputs = prompt.get('required_inputs', ['text',])
-                    for r in required_inputs:
-                        prompt_vars[r] = f'${{{r}}}'
-                    prompts[pid]['vars'] = prompt_vars
+                if prompt_vars:
+                    continue
+                required_inputs = prompt.get('required_inputs', ['text',])
+                for r in required_inputs:
+                    prompt_vars[r] = f'${{{r}}}'
+                prompts[pid]['vars'] = prompt_vars
         return prompts
 
     def process_prompts_import(self, prompts):
