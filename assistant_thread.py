@@ -1,7 +1,7 @@
 import json
 import threading
 import http.client
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlencode
 import sublime
 
 
@@ -23,6 +23,7 @@ class AssistantThread(threading.Thread):
         self.timeout = endpoint.get('max_seconds', 60)
         self.vars = self.prepare_vars(text, pre, post, kwargs)
         self.data = self.prepare_data()
+        self.query = self.prepare_query()
         self.conn = self.prepare_conn()
 
     def prepare_vars(self, text, pre, post, kwargs):
@@ -75,6 +76,21 @@ class AssistantThread(threading.Thread):
                 data[k] = sublime.expand_variables(v, self.vars)
         return data
 
+    def prepare_query(self):
+        """
+        This function prepares query string to be sent to an API endpoint.
+
+        Returns:
+            query (string): A URL encoded string containing the prepared payload.
+        """
+        query = self.endpoint.get('query', {})
+        prompt_query = self.prompt.get('query', {})
+        query.update(prompt_query)
+        data = {}
+        for k, v in query.items():
+            data[k] = sublime.expand_variables(v, self.vars)
+        return urlencode(data)
+
     def prepare_conn(self):
         """
         Prepares the HTTP connection based on the endpoint URL.
@@ -106,6 +122,9 @@ class AssistantThread(threading.Thread):
         data = json.dumps(self.data)
         method = self.endpoint.get('method', 'POST')
         resource = self.endpoint.get('resource', '')
+        resource = str(sublime.expand_variables(resource, self.vars))
+        if self.query:
+            resource = f"{resource}?{self.query}"
         headers = self.endpoint.get('headers', {})
         self.conn.request(method, resource, data, headers)
         response = self.conn.getresponse()
@@ -124,7 +143,7 @@ class AssistantThread(threading.Thread):
             return response
         for k, path in template.items():
             item = self.get_item(data, str(path))
-            if not item:
+            if item is None and k != 'error':
                 response['error'] = f"Error getting response item {k} in '{path}'"
             response[k] = item
         response['response'] = data
