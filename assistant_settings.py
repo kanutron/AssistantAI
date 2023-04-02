@@ -234,15 +234,15 @@ class AssistantAISettings:
             for req_ep in prompt['required_endpoints']:
                 if req_ep in self.endpoints:
                     prompts[pid] = prompt
-            # ensure the prompt provides a 'vars' key
-            for pid, prompt in prompts.items():
-                prompt_vars = prompt.get('vars', {})
-                if prompt_vars:
-                    continue
-                required_inputs = prompt.get('required_inputs', ['text',])
-                for r in required_inputs:
-                    prompt_vars[r] = f'${{{r}}}'
-                prompts[pid]['vars'] = prompt_vars
+        # ensure the prompt provides a 'vars' key
+        for pid, prompt in prompts.items():
+            prompt_vars = prompt.get('vars', {})
+            if prompt_vars:
+                continue
+            required_inputs = prompt.get('required_inputs', ['text',])
+            for r in required_inputs:
+                prompt_vars[r] = f'${{{r}}}'
+            prompts[pid]['vars'] = prompt_vars
         return prompts
 
     def process_prompts_import(self, prompts):
