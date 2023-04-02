@@ -3,4 +3,8 @@
         "caption": "AssistantAI",
         "command": "assistant_ai_prompt"
     },
+    // {
+    //     "caption": "AssistantAI Dump Settings",
+    //     "command": "assistant_ai_dump"
+    // },
 ]

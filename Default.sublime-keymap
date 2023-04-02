@@ -2,5 +2,11 @@
 //    {
 //        "keys": ["alt+shift+p"],
 //        "command": "assistant_ai_prompt",
+//    },
+//    {
+//        // dumps current processed settings in a new buffer
+//        // useful when debugging new servers and prompts specifications
+//        "keys": ["alt+shift+d"],
+//        "command": "assistant_ai_dump",
 //    }
 ]

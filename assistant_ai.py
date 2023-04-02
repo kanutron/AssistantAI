@@ -1,3 +1,4 @@
+import json
 import functools
 import sublime
 import sublime_plugin
@@ -438,6 +439,20 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
             thread = AssistantThread(settings, prompt, endpoint, region, text, pre, post, kwargs)
             thread.start()
             self.handle_thread(thread)
+
+class AssistantAiDumpCommand(AssistantAiAsyncCommand):
+    global settings
+
+    def run(self, edit):
+        data = {
+            'endpoints': settings.endpoints,
+            'prompts': settings.prompts
+        }
+        self.view.run_command("assistant_ai_create_view", {
+            "region": None,
+            "text": json.dumps(data, indent="\t"),
+            "kwargs": {'syntax': 'JSON'},
+        })
 
 class AssistantAiReplaceTextCommand(AssistantAiTextCommand):
     def run(self, edit, region, text, kwargs):
