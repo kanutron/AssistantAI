@@ -33,7 +33,8 @@ class AssistantAISettings:
             credentials = self.load_credentials_from(settings)
             servers = self.load_servers_from(settings, credentials)
             # update endpoints
-            self.endpoints.update(self.load_endpoints_from(servers, credentials))
+            eps = self.load_endpoints_from(servers)
+            self.endpoints.update(eps)
         # load prompts now that we have all end points loaded.
         for file in files:
             settings = self.load_settings_from(file)
@@ -87,6 +88,18 @@ class AssistantAISettings:
                 creds[cid] = cred
         return creds
 
+    @staticmethod
+    def get_credentials_for(server, credentials):
+        creds = {}
+        sid = None
+        if isinstance(server, dict):
+            sid = server.get('id')
+        if sid and sid in credentials and isinstance(credentials[sid], dict):
+            creds.update(credentials[sid])
+        elif isinstance(credentials, dict):
+            creds.update(credentials)
+        return {k:v for k,v in creds.items() if isinstance(v, str)}
+
     def load_servers_from(self, settings, credentials):
         """
         This function loads available servers from settings and return servers
@@ -108,7 +121,10 @@ class AssistantAISettings:
             servers_all += servers_user
         if not servers_all:
             return {}
-        # once we have all servers, filter to usable ones
+        # process imports before anything else
+        for i, server in enumerate(servers_all):
+            servers_all[i] = AssistantAISettings.process_server_import(server, servers_all)
+        # filter to usable ones by available credentials
         servers = {}
         servers_to_dismiss = []
         for server in servers_all:
@@ -116,58 +132,75 @@ class AssistantAISettings:
             if not 'required_credentials' in server:
                 servers[sid] = server
                 continue  # this server requires no credentials
+            # ensure this server have all needed credentials, dismissit otherwise
             if isinstance(server['required_credentials'], str):
                 server['required_credentials'] = [server['required_credentials'],]
+            srv_creds = AssistantAISettings.get_credentials_for(server, credentials)
             for req_cred in server['required_credentials']:
-                if req_cred not in credentials or not credentials.get(req_cred):
+                if req_cred not in srv_creds or not srv_creds.get(req_cred):
                     servers_to_dismiss.append(sid)
                     break
+            # process server headers expanding any needed credential and add the server
             if sid not in servers_to_dismiss:
+                headers = {}
+                template = server.get('headers', {})
+                for k, v in template.items():
+                    headers[k] = sublime.expand_variables(v, srv_creds)
+                server['headers'] = headers
+                server['credentials'] = srv_creds
+                # add this server
                 servers[sid] = server
             else:
                 print(f"Server {sid} dismissed due to missing credentials.")
         return servers
 
-    def load_endpoints_from(self, servers, credentials):
+    @staticmethod
+    def process_server_import(server, servers):
+        if 'import' not in server:
+            return server
+        if not isinstance(server['import'], str):
+            del(server['import'])
+            return server
+        import_ref = server.get('import', '').strip().lower()
+        for parent in servers:
+            candidate_ref = parent.get('id', '').strip().lower()
+            if candidate_ref != import_ref:
+                continue
+            new = {}
+            new.update(parent)
+            new.update(server)
+            if 'import' in new:
+                del(new['import'])
+            return new
+        if 'import' in server:
+            del(server['import'])
+        return server
+
+    def load_endpoints_from(self, servers):
         """
         Load all available endpoints from given servers and process their headers.
 
         :param servers: A dictionary containing information about servers.
         :type servers: dict
-        :param credentials: A dictionary containing credentials for expanding headers.
-        :type credentials: dict
         :return: A dictionary containing available endpoints with processed headers.
         :rtype: dict
         """
         # all server keys except those banned will be added into endpoint
-        banned_server_keys = ('name', 'description', 'endpoints')
-        # create an empty dictionary for holding endpoints
         endpoints = {}
-        # iterate over each server in the given `servers` dictionary
+        banned_server_keys = ('name', 'description', 'endpoints')
         for sid, server in servers.items():
             # iterate over each endpoint in the current `server`
             for eid, endpoint in server.get('endpoints', {}).items():
+                new_ep = {}
+                new_ep.update(endpoint)
                 # iterate over each key in the current `server`
                 for sk in server:
-                    # append the value of `server[sk]` in the `endpoint` dictionary,
-                    # only if `sk` is not among the banned keys
                     if sk not in banned_server_keys:
-                        endpoint[sk] = server[sk]
+                        new_ep[sk] = server[sk]
                 # add the server related keys with the prefix 'server_'
-                endpoint['server_name'] = server.get('name', '')
-                endpoint['server_description'] = server.get('description', '')
-                # process endpoint headers expanding any needed credential
-                template = endpoint.get('headers', {})
-                headers = {}
-                # iterate over each key-value pair in the `template` dictionary for headers
-                for k, v in template.items():
-                    # expand any variables in `v` using the given `credentials`
-                    headers[k] = sublime.expand_variables(v, credentials)
-                # update the original `headers` dictionary with new `headers` dictionary
-                endpoint['headers'] = headers
-                # add this endpoint to the returning dict
-                endpoints[f'{sid}/{eid}'] = endpoint
-        # return the dictionary containing all endpoints with processed headers
+                new_ep['server_name'] = server.get('name', '')
+                new_ep['server_description'] = server.get('description', '')
+                endpoints[f'{sid}/{eid}'] = new_ep
         return endpoints
 
     def load_prompts_from(self, settings):
