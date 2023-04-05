@@ -1,26 +1,34 @@
 import json
 import threading
-import http.client
-from urllib.parse import urlparse, urlencode
 import sublime
-
+import http.client
+from typing import Optional
+from urllib.parse import urlparse, urlencode
+from .assistant_settings import AssistantAISettings, Endpoint, Prompt
 
 class AssistantThread(threading.Thread):
     """
     An async thread class for accessing the remote server API, and waiting for a response
     """
-    timeout = 60
-    running = False
-    result = None
+    timeout: int
+    running: bool
+    result: Optional[dict]
+    settings: AssistantAISettings
+    prompt: Prompt
+    endpoint: Endpoint
+    region: sublime.Region
 
-    def __init__(self, settings, prompt, endpoint, region, text, pre, post, kwargs):
+    def __init__(self, settings: AssistantAISettings, prompt: Prompt, endpoint: Endpoint,
+                 region: sublime.Region, text: str, pre: str, post: str, kwargs):
         super().__init__()
+        self.running = False
+        self.result = None
         self.settings = settings
         self.prompt = prompt
         self.endpoint = endpoint
         self.region = region
         # prompt vars may add text
-        self.timeout = endpoint.get('max_seconds', 60)
+        self.timeout = endpoint.timeout if endpoint.timeout else 60
         self.vars = self.prepare_vars(text, pre, post, kwargs)
         self.data = self.prepare_data()
         self.query = self.prepare_query()
@@ -47,14 +55,12 @@ class AssistantThread(threading.Thread):
         }
         vars_.update(kwargs)
         # expand vars as defined by prompt/vars
-        prompt_vars = self.prompt.get('vars', {})
-        for k, v in prompt_vars.items():
+        for k, v in self.prompt.variables.items():
             # for convenience, in vars, user may specify
             # each line as a string of an array
             if isinstance(v, list):
                 v = '\n'.join(v)
-            prompt_vars[k] = sublime.expand_variables(v, vars_)
-        vars_.update(prompt_vars)
+            vars_[k] = sublime.expand_variables(v, vars_)
         return vars_
 
     def prepare_data(self):
@@ -64,17 +70,18 @@ class AssistantThread(threading.Thread):
         Returns:
             data (dict): A dictionary containing the prepared data.
         """
-        request = self.endpoint.get('request', {})
-        params = self.prompt.get('params', {})
-        for k, v in params.items():
-            params[k] = sublime.expand_variables(v, self.vars)
-        request.update(params)
-        data = {}
-        valid_params = self.endpoint.get('valid_params', {})
+        request = {}
+        request.update(self.endpoint.request)
+        request.update(self.prompt.params)
         for k, v in request.items():
-            if k in valid_params:  # TODO: check valid_params specified type.
-                data[k] = sublime.expand_variables(v, self.vars)
-        return data
+            request[k] = sublime.expand_variables(v, self.vars)
+        to_filter = set()
+        for k, v in request.items():
+            if k not in self.endpoint.valid_params:
+                to_filter.add(k)
+                print(f"AssistantAI: WARNING: '{self.prompt.pid}' provides a param '{k}' not accepted by '{self.endpoint.eid}'.")
+            # TODO: check valid_params specified type.
+        return {k:v for k,v in request.items() if k not in to_filter}
 
     def prepare_query(self):
         """
@@ -83,9 +90,9 @@ class AssistantThread(threading.Thread):
         Returns:
             query (string): A URL encoded string containing the prepared payload.
         """
-        query = self.endpoint.get('query', {})
-        prompt_query = self.prompt.get('query', {})
-        query.update(prompt_query)
+        query = {}
+        query.update(self.endpoint.query)
+        query.update(self.prompt.query)
         data = {}
         for k, v in query.items():
             data[k] = sublime.expand_variables(v, self.vars)
@@ -99,9 +106,9 @@ class AssistantThread(threading.Thread):
         http.client.HTTPConnection or http.client.HTTPSConnection: The suitable HTTP connection to be used for
         sending requests to the endpoint URL.
         """
-        url = urlparse(self.endpoint.get('url'))
-        scheme = url.scheme
-        hostname = url.hostname
+        url = urlparse(self.endpoint.url)
+        scheme = str(url.scheme)
+        hostname = str(url.hostname)
         port = url.port
         if not url.port:
             port = 443 if scheme == 'https' else 80
@@ -120,12 +127,12 @@ class AssistantThread(threading.Thread):
         Pass the given data to remote API, returning the response
         """
         data = json.dumps(self.data)
-        method = self.endpoint.get('method', 'POST')
-        resource = self.endpoint.get('resource', '')
+        method = self.endpoint.method
+        resource = self.endpoint.resource
         resource = str(sublime.expand_variables(resource, self.vars))
         if self.query:
             resource = f"{resource}?{self.query}"
-        headers = self.endpoint.get('headers', {})
+        headers = self.endpoint.headers if self.endpoint.headers else {}
         self.conn.request(method, resource, data, headers)
         response = self.conn.getresponse()
         return self.parse_response(json.loads(response.read().decode()))
@@ -137,7 +144,7 @@ class AssistantThread(threading.Thread):
         or an error message if any error occurred while parsing
         """
         response = {}
-        template = self.endpoint.get('response', {})
+        template = self.endpoint.response
         if not template:
             response['error'] = f"The endpoint doesn't specify any reponse template."
             return response

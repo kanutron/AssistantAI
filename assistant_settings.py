@@ -1,19 +1,428 @@
 import sublime
+import copy
 import uuid
+from dataclasses import dataclass
+from typing import Dict, List, Any, Optional
 
 PKG_NAME = 'AssistantAI'
 SETTINGS_FILE = 'assistant_ai.sublime-settings'
 PKG_SETTINGS_FILE_BLOB = 'assistant_ai*.sublime-settings'
 
-class AssistantAISettings:
+@dataclass
+class SettingsDataLoader:
+    ident: str
+    spec: Dict[str, Any]
+    import_spec: Dict[str, Any]
+    import_result: Optional[bool]
+
+    def __init__(self, data, ident=None, item_type='item'):
+        """
+        Loads the item from the given dict coming from Sublime settings.
+        If the item imports from another, this is not processed. Call import_from(...).
+        """
+        # Item identification data
+        if not ident:
+            ident = item_type + '_' + str(uuid.uuid4())
+        self.spec = data
+        self.ident = ident
+        # Import specifications
+        self.import_spec = self.load_dict(data, 'import', str_to_dict='from')
+        self.import_result = None
+
+    def load_str(self, data, key, alt='') -> str:
+        """
+        Load a string value from the given data dictionary using the given key.
+
+        Args:
+            data (dict): The dictionary containing the key-value pair.
+            key: The key to retrieve the value.
+            alt (str): The alternate value to return if key is not found.
+
+        Returns:
+            str: The value of the key in data dictionary, or alt if key is not found or value is empty.
+
+        Raises:
+            TypeError: If item is not a string.
+        """
+        if not data:
+            return alt
+        try:
+            item = data.get(key, alt)
+        except TypeError:
+            return alt
+        if not item:
+            return alt
+        if isinstance(item, str):
+            return item
+        raise TypeError(f"'{key}' must be a string. id='{self.ident}'.")
+
+    def load_int(self, data, key, alt=0) -> int:
+        if not data:
+            return alt
+        try:
+            item = data.get(key, alt)
+        except TypeError:
+            return alt
+        if not item:
+            return alt
+        if isinstance(item, int):
+            return item
+        raise TypeError(f"'{key}' must be an integer. id='{self.ident}'.")
+
+    def load_dict(self, data, key, str_to_dict=None) -> dict:
+        if not data:
+            return {}
+        try:
+            item = copy.deepcopy(data.get(key, {}))
+        except TypeError:
+            return {}
+        if not item:
+            return {}
+        if str_to_dict and isinstance(item, str) and isinstance(str_to_dict, str):
+            item = {str_to_dict: item}
+        if not isinstance(item, dict):
+            if not str_to_dict:
+                raise TypeError(f"'{key}' must be an object. id='{self.ident}'.")
+            else:
+                raise TypeError(f"'{key}' must be an object or string. id='{self.ident}'.")
+        return item
+
+    def load_list_str(self, data, key, str_to_list=True) -> list:
+        if not data:
+            return []
+        try:
+            items = copy.deepcopy(data.get(key, []))
+        except TypeError:
+            return []
+        if not items:
+            return []
+        if str_to_list and isinstance(items, str):
+            items = [items, ]
+        if not isinstance(items, list):
+            raise TypeError(f"'{key}' must be a list of strings. id='{self.ident}'.")
+        for item in items:
+            if not isinstance(item, str):
+                raise TypeError(f"'{key}' must be a list of strings. id='{self.ident}'.")
+        return items
+
+    def load_list_dict(self, data, key) -> list:
+        if not data:
+            return []
+        try:
+            items = copy.deepcopy(data.get(key, []))
+        except TypeError:
+            return []
+        if not items:
+            return []
+        if not isinstance(items, list):
+            raise TypeError(f"'{key}' must be a list of objects. id='{self.ident}'.")
+        for item in items:
+            if not isinstance(item, dict):
+                raise TypeError(f"'{key}' must be a list of objects. id='{self.ident}'.")
+        return items
+
+    def import_pending(self):
+        return self.import_spec and self.import_result is None
+
+    def import_done(self):
+        return self.import_result is True
+
+    def import_failed(self):
+        return self.import_result is False
+
+    def import_failure(self):
+        self.import_result = False
+        return self
+
+    def import_completed(self):
+        self.import_result = True
+        return self
+
+    def import_from(self, parents, chain=None):
+        """
+        Process the item import specification given the current available parents
+        and return a new expanded Item without the import statement.
+
+        It's called recursively to solve parents that are still pending.
+
+        Chain is used to record the import chain. If the same id is found twice is an indication
+        of a cyclic dependency, and the import will fail.
+        """
+        if not self.import_pending():
+            return self
+        if not isinstance(chain, list):
+            chain = []
+        # get intended parent id
+        parent_id = self.import_spec.get('from')
+        # chain check for duplicates = cyclic dependency
+        if parent_id in chain:
+            return self.import_failure()
+        chain.append(parent_id)
+        # check if parent exists
+        if not parent_id in parents:
+            return self.import_failure()
+        # check the parent is same type as self
+        if not isinstance(parents[parent_id], type(self)):
+            return self.import_failure()
+        # import parent if needed
+        if parents[parent_id].import_pending():
+            parents[parent_id] = parents[parent_id].import_from(parents, chain)
+            if parents[parent_id].import_failed():
+                return self.import_failure()
+        # create a new item from parent
+        return self.from_parent(parents[parent_id])
+
+    def from_parent(self, parent):
+        """
+        Given a parent return a new processed Item as per the import specs.
+
+        Parent must not have the import key. That is, if the parent depends on
+        another ancestor, that should be resolved first.
+        """
+        # create a new item specification as if it was specified in settings
+        new_spec = copy.deepcopy(parent.spec)
+        new_spec.update(self.spec)
+        # fine tuning as defined by the user in the 'import' key
+        actions = {
+            'import': 'delete',
+            'required_inputs': 'replace',
+            'required_syntax': 'update',
+            'required_context': 'replace',
+            'required_endpoints': 'update',
+            'inputs': 'update',
+            'vars': 'update',
+            'params': 'update',
+            'query': 'update',
+            'command': 'replace',
+        }
+        self.import_spec['import'] = 'delete'  # force this to be deleted when importing
+        for key, action in actions.items():
+            parent_v = parent.spec.get(key)
+            prompt_v = self.spec.get(key)
+            if not parent_v or not prompt_v:
+                continue
+            action = self.import_spec.get(key, action)
+            if action == 'replace':
+                continue
+            if action == 'delete':
+                del(new_spec[key])
+                continue
+            # then is update, which depends on the source/target types
+            if isinstance(parent_v, list) and isinstance(prompt_v, list):
+                new_spec[key] = parent_v + prompt_v
+                continue
+            if isinstance(parent_v, dict) and isinstance(prompt_v, dict):
+                new_spec[key] = copy.deepcopy(parent_v)
+                new_spec[key].update(prompt_v)
+                continue
+        # return a new Item created from the resulting specification
+        cls = type(self)
+        return cls(new_spec, self.ident).import_completed()
+
+@dataclass
+class Endpoint(SettingsDataLoader):
+    eid: str
+    name: str
+    icon: str
+    # endpoint interface
+    method: str
+    resource: str
+    # prompt requirements
+    required_vars: List[str]
+    # request body and params specification
+    valid_params: Dict[str, str]
+    request: Dict[str, Any]
+    query: Dict[str, str]
+    # response data retrieval specification
+    response: Dict[str, str]
+    # server data
+    sid: Optional[str]
+    server_name: Optional[str]
+    url: Optional[str]
+    timeout: Optional[int]
+    credentials: Optional[Dict[str, Any]]
+    required_credentials: Optional[List[str]]
+    headers: Optional[Dict[str, str]]
+
+    def __init__(self, data, ident=None, item_type='endpoint'):
+        """
+        Loads the endpoint from the given dict coming from Sublime settings.
+        If the endpoint imports from another, this is not processed. Call import_from(...).
+        """
+        super().__init__(data, ident, item_type)
+        # Identification data
+        self.eid = self.load_str(data, 'id', self.ident)
+        self.name = self.load_str(data, 'name', self.eid.replace('_', ' ').title())
+        self.icon = self.load_str(data, 'icon', '↯')
+        # Endpoint interface
+        self.method = self.load_str(data, 'method', 'POST')
+        self.resource = self.load_str(data, 'resource', '')
+        # prompt requirements
+        self.required_vars = self.load_list_str(data, 'required_vars')
+        # request body and params specification
+        self.valid_params = self.load_dict(data, 'valid_params')
+        self.request = self.load_dict(data, 'request')
+        self.query = self.load_dict(data, 'query')
+        # response data retrieval specification
+        self.response = self.load_dict(data, 'response')
+        # server data
+        self.sid = None
+        self.server_name = None
+        self.url = None
+        self.timeout = None
+        self.credentials = None
+        self.required_credentials = None
+        self.headers = None
+
+    def set_server_data(self, server):
+        self.sid = server.sid
+        self.server_name = server.name
+        self.url = server.url
+        self.timeout = server.timeout
+        self.credentials = server.credentials
+        self.required_credentials = server.required_credentials
+        self.headers = server.headers
+
+@dataclass
+class Server(SettingsDataLoader):
+    sid: str
+    name: str
+    url: str
+    timeout: int
+    # server requirements
+    credentials: Dict[str, Any]
+    required_credentials: List[str]
+    # specs
+    headers: Dict[str, str]
+    endpoints: Dict[str, Endpoint]
+
+    def __init__(self, data, ident=None, item_type='server'):
+        """
+        Loads the server from the given dict coming from Sublime settings.
+        If the server imports from another, this is not processed. Call import_from(...).
+        """
+        super().__init__(data, ident, item_type)
+        # Identification data
+        self.sid = self.load_str(data, 'id', self.ident)
+        self.name = self.load_str(data, 'name', self.sid.replace('_', ' ').title())
+        self.url = self.load_str(data, 'url')
+        self.timeout = self.load_int(data, 'timeout')
+        # Server requirements
+        self.credentials = {}
+        self.required_credentials = self.load_list_str(data, 'required_credentials')
+        # Server specifications
+        self.headers = self.load_dict(data, 'headers')
+        # Server endpoints
+        self.endpoints = self.load_dict(data, 'endpoints')
+        for eid in self.endpoints:
+            self.endpoints[eid] = Endpoint(self.endpoints[eid], eid)
+            self.endpoints[eid].set_server_data(self)
+
+    def set_credentials(self, credentials: Dict[str, Any]):
+        self.credentials = credentials
+        # this loads headers without processing again
+        self.headers = self.load_dict(self.spec, 'headers')
+        for k, v in self.headers.items():
+            self.headers[k] = str(sublime.expand_variables(v, self.credentials))
+        for eid in self.endpoints:
+            self.endpoints[eid].set_server_data(self)
+
+@dataclass
+class PromptInput(SettingsDataLoader):
+    input_name: str
+    input_type: str
+    caption: str
+    description: str
+    items: Optional[List[str]]
+
+    def __init__(self, data, ident=None, item_type='prompt_input'):
+        """
+        Loads the prompt input from the given dict coming from Sublime settings.
+        If type is list, items must be provided.
+        """
+        super().__init__(data, ident, item_type)
+        # Prompt input specification
+        self.input_name = self.ident
+        self.input_type = self.load_str(data, 'type', 'text').lower()
+        self.caption = self.load_str(data, 'caption', self.ident.replace('_', ' ').title())
+        self.description = self.load_str(data, 'description', self.caption)
+        if self.input_type == 'list':
+            self.items = self.load_list_str(data, 'items')
+        if self.input_type == 'list_from_prompt':
+            ...  # TODO
+        if self.input_type == 'text_from_prompt':
+            ...  # TODO
+
+@dataclass
+class Prompt(SettingsDataLoader):
+    pid: str
+    name: str
+    icon: str
+    description: str
+    # input definitions
+    inputs: Dict[str, PromptInput]
+    # prompt requirements
+    required_inputs: List[str]
+    required_syntax: List[str]
+    required_context: Dict[str, Any]
+    required_endpoints: List[str]
+    # variables offered by this prompt
+    variables: Dict[str, Any]
+    # call payload, query-string and data body
+    params: Dict[str, Any]
+    query: Dict[str, str]
+    # the command to execute once the prompt is processed
+    command: Dict[str, Any]
+
+    def __init__(self, data, ident=None, item_type='prompt'):
+        """
+        Loads the prompt from the given dict coming from Sublime settings.
+        If the prompt imports from another, this is not processed. Call import_from(...).
+        """
+        super().__init__(data, ident, item_type)
+        # Prompt identification data
+        self.pid = self.load_str(data, 'id', self.ident)
+        self.name = self.load_str(data, 'name', self.pid.replace('_', ' ').title())
+        self.icon = self.load_str(data, 'icon', '♡')
+        self.description = self.load_str(data, 'description', self.name)
+        # Input definitions
+        self.inputs = self.load_dict(data, 'inputs')
+        for iid in self.inputs:
+            self.inputs[iid] = PromptInput(self.inputs[iid], iid)
+        # Prompt requirements
+        self.required_inputs = self.load_list_str(data, 'required_inputs')
+        self.required_syntax = self.load_list_str(data, 'required_syntax')
+        self.required_context = self.load_dict(data, 'required_context')
+        self.required_endpoints = self.load_list_str(data, 'required_endpoints')
+        # Variables
+        self.variables = self.load_dict(data, 'vars')
+        if not self.variables:
+            prompt_vars = {}
+            for r in self.required_inputs:
+                prompt_vars[r] = f'${{{r}}}'
+            self.variables = prompt_vars
+        # Payload params and query
+        self.params = self.load_dict(data, 'params')
+        self.query = self.load_dict(data, 'query')
+        # Command to execute
+        self.command = self.load_dict(data, 'command', str_to_dict='cmd')
+
+@dataclass
+class AssistantAISettings(SettingsDataLoader):
     """
     Handles all AssistantAI settings.
     """
-    endpoints = {}
-    prompts = {}
-    settings_callbacks = {}
+    prompts: Dict[str, Prompt]
+    endpoints: Dict[str, Endpoint]
+    settings_callbacks: Dict[str, sublime.Settings]
 
-    def load(self):
+    def __init__(self):
+        super().__init__({}, ident='assistant_ai', item_type='root_settings')
+        self.prompts = {}
+        self.endpoints = {}
+        self.settings_callbacks = {}
+
+    def load(self) -> None:
         """
         Loads settings and prompts from all packages that provides AssistantAI settings.
         Any package providing assistant_ai*.sublime-settings will be processed.
@@ -32,17 +441,18 @@ class AssistantAISettings:
             settings = self.load_settings_from(file)
             credentials = self.load_credentials_from(settings)
             servers = self.load_servers_from(settings, credentials)
-            # update endpoints
             eps = self.load_endpoints_from(servers)
             self.endpoints.update(eps)
         # load prompts now that we have all end points loaded.
         for file in files:
             settings = self.load_settings_from(file)
-            self.prompts.update(self.load_prompts_from(settings))
+            prompts = self.load_prompts_from(settings)
+            self.prompts.update(prompts)
         # since some prompts may import from others, process the import statements
-        self.prompts = self.process_prompts_import(self.prompts)
+        for pid, prompt in self.prompts.items():
+            self.prompts[pid] = prompt.import_from(self.prompts)
 
-    def unload(self):
+    def unload(self) -> None:
         """
         Clears all the 'assistant_ai' settings on_change callbacks from the
         `settings_callbacks` dictionary.
@@ -52,7 +462,7 @@ class AssistantAISettings:
         for file in self.settings_callbacks:
             self.settings_callbacks[file].clear_on_change('assistant_ai')
 
-    def load_settings_from(self, file):
+    def load_settings_from(self, file) -> sublime.Settings:
         """
         Load settings from a given file in Sublime Text.
 
@@ -72,35 +482,29 @@ class AssistantAISettings:
             self.settings_callbacks[file] = settings
         return settings
 
-    def load_credentials_from(self, settings):
+    def load_credentials_from(self, settings) -> Dict[str, Any]:
         """
         Extracts valid credentials from settings.
 
         :param settings: A dictionary containing credentials data.
         :return: A dictionary containing valid credentials.
         """
-        creds_all = settings.get('credentials', {})
-        if not isinstance(creds_all, dict):
-            return {}
+        creds_all = self.load_dict(settings, 'credentials')
         creds = {}
         for cid, cred in creds_all.items():
             if cred is not None:
                 creds[cid] = cred
         return creds
 
-    @staticmethod
-    def get_credentials_for(server, credentials):
+    def get_credentials_for(self, server, credentials) -> Dict[str, Any]:
         creds = {}
-        sid = None
-        if isinstance(server, dict):
-            sid = server.get('id')
-        if sid and sid in credentials and isinstance(credentials[sid], dict):
-            creds.update(credentials[sid])
+        if server.sid in credentials and isinstance(credentials[server.sid], dict):
+            creds.update(credentials[server.sid])
         elif isinstance(credentials, dict):
             creds.update(credentials)
         return {k:v for k,v in creds.items() if isinstance(v, str)}
 
-    def load_servers_from(self, settings, credentials):
+    def load_servers_from(self, settings, credentials) -> Dict[str, Server]:
         """
         This function loads available servers from settings and return servers
         that can be accessed using provided credentials.
@@ -112,71 +516,36 @@ class AssistantAISettings:
         :return: A dictionary containing Id and info of servers that can be accessed using provided credentials.
         :rtype: dict
         """
-        servers_all = []
-        servers_def = settings.get('default_servers', [])
-        if isinstance(servers_def, list):
-            servers_all += servers_def
-        servers_user = settings.get('servers', [])
-        if isinstance(servers_user, list):
-            servers_all += servers_user
-        if not servers_all:
-            return {}
+        servers_list: List[Any] = []
+        servers_list += self.load_list_dict(settings, 'default_servers')
+        servers_list += self.load_list_dict(settings, 'servers')
+        # create Server objects and keep only valid ones
+        servers: Dict[str, Server] = {}
+        for server in servers_list:
+            new = Server(server)
+            servers[new.sid] = new
         # process imports before anything else
-        for i, server in enumerate(servers_all):
-            servers_all[i] = AssistantAISettings.process_server_import(server, servers_all)
+        for sid in servers:
+            servers[sid] = servers[sid].import_from(servers)
         # filter to usable ones by available credentials
-        servers = {}
-        servers_to_dismiss = []
-        for server in servers_all:
-            sid = server.get('id', 'server_' + str(uuid.uuid4()))
-            if not 'required_credentials' in server:
-                servers[sid] = server
-                continue  # this server requires no credentials
-            # ensure this server have all needed credentials, dismissit otherwise
-            if isinstance(server['required_credentials'], str):
-                server['required_credentials'] = [server['required_credentials'],]
-            srv_creds = AssistantAISettings.get_credentials_for(server, credentials)
-            for req_cred in server['required_credentials']:
-                if req_cred not in srv_creds or not srv_creds.get(req_cred):
-                    servers_to_dismiss.append(sid)
-                    break
-            # process server headers expanding any needed credential and add the server
-            if sid not in servers_to_dismiss:
-                headers = {}
-                template = server.get('headers', {})
-                for k, v in template.items():
-                    headers[k] = sublime.expand_variables(v, srv_creds)
-                server['headers'] = headers
-                server['credentials'] = srv_creds
-                # add this server
-                servers[sid] = server
-            else:
-                print(f"Server {sid} dismissed due to missing credentials.")
-        return servers
-
-    @staticmethod
-    def process_server_import(server, servers):
-        if 'import' not in server:
-            return server
-        if not isinstance(server['import'], str):
-            del(server['import'])
-            return server
-        import_ref = server.get('import', '').strip().lower()
-        for parent in servers:
-            candidate_ref = parent.get('id', '').strip().lower()
-            if candidate_ref != import_ref:
+        to_dismiss = []
+        for sid in servers:
+            if not servers[sid].required_credentials:
                 continue
-            new = {}
-            new.update(parent)
-            new.update(server)
-            if 'import' in new:
-                del(new['import'])
-            return new
-        if 'import' in server:
-            del(server['import'])
-        return server
+            # identify servers to be dismissed
+            srv_creds = self.get_credentials_for(servers[sid], credentials)
+            for req_cred in servers[sid].required_credentials:
+                if req_cred not in srv_creds or not srv_creds.get(req_cred):
+                    to_dismiss.append(sid)
+                    break
+            # process server headers
+            if sid not in to_dismiss:
+                servers[sid].set_credentials(srv_creds)
+            else:
+                print(f"AssistantAI: Server '{sid}' dismissed due to missing required credentials.")
+        return {sid:srv for sid,srv in servers.items() if sid not in to_dismiss}
 
-    def load_endpoints_from(self, servers):
+    def load_endpoints_from(self, servers) -> Dict[str, Endpoint]:
         """
         Load all available endpoints from given servers and process their headers.
 
@@ -187,188 +556,52 @@ class AssistantAISettings:
         """
         # all server keys except those banned will be added into endpoint
         endpoints = {}
-        banned_server_keys = ('name', 'description', 'endpoints')
         for sid, server in servers.items():
-            # iterate over each endpoint in the current `server`
-            for eid, endpoint in server.get('endpoints', {}).items():
-                new_ep = {}
-                new_ep.update(endpoint)
-                # iterate over each key in the current `server`
-                for sk in server:
-                    if sk not in banned_server_keys:
-                        new_ep[sk] = server[sk]
-                # add the server related keys with the prefix 'server_'
-                new_ep['server_name'] = server.get('name', '')
-                new_ep['server_description'] = server.get('description', '')
-                endpoints[f'{sid}/{eid}'] = new_ep
+            for eid, endpoint in server.endpoints.items():
+                endpoints[f'{sid}/{eid}'] = endpoint
         return endpoints
 
-    def load_prompts_from(self, settings):
+    def load_prompts_from(self, settings) -> Dict[str, Prompt]:
         """
         This function loads prompts from the settings file and filters out prompts that require unavailable endpoints.
-        Then, it ensures that variables are configured with defaults, so each input produces a variable.
 
         Args:
         - settings: dictionary containing all settings
 
         Returns:
-        - prompts: dictionary containing all prompts that were not filtered out and have default variables
+        - prompts: dictionary containing all prompts that were not filtered out
         """
-        prompts_all = []
-        prompts_def = settings.get('default_prompts', [])
-        if isinstance(prompts_def, list):
-            prompts_all += prompts_def
-        prompts_user = settings.get('prompts', [])
-        if isinstance(prompts_user, list):
-            prompts_all += prompts_user
-        if not prompts_all:
-            return {}
+        # load prompt specs from settings
+        prompts_list = []
+        prompts_list += self.load_list_dict(settings, 'default_prompts')
+        prompts_list += self.load_list_dict(settings, 'prompts')
+        # create Prompt objects and keep only valid ones
         prompts = {}
-        for prompt in prompts_all:
-            pid = prompt.get('id', 'prompt_' + str(uuid.uuid4()))
-            if not 'required_endpoints' in prompt:
-                prompts[pid] = prompt
+        for prompt in prompts_list:
+            prompt = Prompt(prompt)
+            if not prompt.required_endpoints:
+                prompts[prompt.pid] = prompt
                 continue
-            if isinstance(prompt['required_endpoints'], str):
-                prompt['required_endpoints'] = [prompt['required_endpoints'],]
-            for req_ep in prompt['required_endpoints']:
-                if req_ep in self.endpoints:
-                    prompts[pid] = prompt
-        # ensure the prompt provides a 'vars' key
-        for pid, prompt in prompts.items():
-            prompt_vars = prompt.get('vars', {})
-            if prompt_vars:
-                continue
-            required_inputs = prompt.get('required_inputs', ['text',])
-            for r in required_inputs:
-                prompt_vars[r] = f'${{{r}}}'
-            prompts[pid]['vars'] = prompt_vars
+            for ep in prompt.required_endpoints:
+                if ep in self.endpoints:
+                    prompts[prompt.pid] = prompt
+                    break
         return prompts
 
-    def process_prompts_import(self, prompts):
-        """
-        This function processes all loaded prompts returns a dictionary of processed prompts.
-        For each prompt, process the 'import' statement if needed.
-
-        Parameters:
-        prompts (dict): A dictionary containing prompts to be processed.
-
-        Returns:
-        dict: A dictionary containing processed prompts.
-        """
-        processed = {}
-        processed.update(prompts)
-        for p, prompt in prompts.items():
-            proc_prompt = self.prompt_import(processed, prompt)
-            if proc_prompt:
-                processed[p] = proc_prompt
-            else:
-                del(processed[p])
-        return processed
-
-    @staticmethod
-    def prompt_import(prompts, prompt, chain=None):
-        """
-        Given a promt as specified in settings, process the import statement
-        resulting in the intended prompt with all keys populated from its parent.
-
-        Is a recursive function for resolving the dependency tree of prompts.
-
-        Cyclic dependency safe.
-        """
-        if not isinstance(chain, list):
-            chain = []
-        import_spec = prompt.get('import', None)
-        if not import_spec:
-            return prompt
-        if isinstance(import_spec, str):
-            import_spec = {'from': import_spec}
-        if not isinstance(import_spec, dict):
-            return None
-        parent_id = import_spec.get('from', None)
-        # there is an import, without a from id
-        if not parent_id:
-            # delete import key as its presence is used to determine the need to
-            # recursively call this function later
-            del(prompt['import'])
-            return prompt
-        # chain check for duplicates = cyclic dependency
-        if parent_id in chain:
-            return None
-        chain.append(parent_id)
-        # specified parent id doesn't exist
-        if parent_id and parent_id not in prompts:
-            return None
-        # get the parent
-        parent = prompts.get(parent_id, {})
-        if not parent:
-            return None
-        # process parent import if needed
-        if parent.get('import', None):
-            parent = AssistantAISettings.prompt_import(prompts, parent, chain)
-        # process current prompt
-        if parent:
-            prompts[parent_id] = parent
-            return AssistantAISettings.get_imported_prompt(prompt, parent, import_spec)
-        return None
-
-    @staticmethod
-    def get_imported_prompt(prompt, parent, import_spec):
-        """
-        Given a prompt, its parent and the import specification, return the
-        prompt processed as per the import specs.
-
-        Parent must not have the import key. That is, if the parent depends on
-        another ancestor, that should be resolved first.
-        """
-        actions = {
-            'required_inputs': 'replace',
-            'required_context': 'replace',
-            'required_syntax': 'update',
-            'required_endpoints': 'update',
-            'required_prompt_responses': 'update',
-            'provided_vars': 'update',
-            'provided_params': 'update'
-        }
-        new = {}
-        new.update(parent)
-        new.update(prompt)
-        del(new['import'])
-        # fine tune how import happens, for object/array items
-        # this is defined by the user in the 'import' key
-        for key, action in actions.items():
-            parent_v = parent.get(key)
-            prompt_v = prompt.get(key)
-            if not parent_v or not prompt_v:
-                continue
-            action = import_spec.get(key, action)
-            if action == 'replace':
-                continue
-            if action == 'delete':
-                del(new[key])
-                continue
-            if isinstance(parent_v, list) and isinstance(prompt_v, list):
-                new[key] = parent_v + prompt_v
-                continue
-            if isinstance(parent_v, dict) and isinstance(prompt_v, dict):
-                new[key] = parent_v.update(prompt_v)
-                continue
-        return new
-
-    def filter_prompts_by_available_context(self, prompts, available_context):
+    def filter_prompts_by_available_context(self, prompts, available_context) -> Dict[str, Prompt]:
         """
         Returns all usable prompts filtering by current edit state.
         Selected text, available context pre and/or post contents.
         """
         to_filter = set()
         for p, prompt in prompts.items():
-            if 'text' in prompt.get('required_inputs', ['text',]):
+            if 'text' in prompt.required_inputs:
                 if available_context.get('text_chars') < 1:
                     to_filter.add(p)
                     continue
-            if 'required_context' not in prompt:
+            if not prompt.required_context:
                 continue
-            req_crx = prompt.get('required_context')
+            req_crx = prompt.required_context
             unit = req_crx.get('unit', 'chars')
             req_pre = req_crx.get('pre_size', None)
             req_post = req_crx.get('post_size', None)
@@ -380,7 +613,7 @@ class AssistantAISettings:
                 to_filter.add(p)
         return {k: v for k, v in prompts.items() if k not in to_filter}
 
-    def filter_prompts_by_available_endpoints(self, prompts):
+    def filter_prompts_by_available_endpoints(self, prompts) -> Dict[str, Prompt]:
         """
         Returns all usable prompts filtering by availability of suitable endpoints.
         Selected text, available context pre and/or post contents.
@@ -392,7 +625,7 @@ class AssistantAISettings:
                 to_filter.add(p)
         return {k: v for k, v in prompts.items() if k not in to_filter}
 
-    def filter_prompts_by_syntax(self, prompts, syntax=None):
+    def filter_prompts_by_syntax(self, prompts, syntax=None) -> Dict[str, Prompt]:
         """
         Returns all loaded usable prompts filtering by syntax
         """
@@ -401,45 +634,31 @@ class AssistantAISettings:
         to_filter = set()
         syntax = syntax.lower()
         for p, prompt in prompts.items():
-            prompt_syntax = prompt.get('required_syntax', [syntax, ])
-            valid_syntax = [syn.lower() for syn in prompt_syntax]
+            if not prompt.required_syntax:
+                continue
+            valid_syntax = [syn.lower() for syn in prompt.required_syntax]
             if syntax not in valid_syntax:
                 to_filter.add(p)
         return {k: v for k, v in prompts.items() if k not in to_filter}
 
-    def get_endpoints_for_prompt(self, prompt):
+    def get_endpoints_for_prompt(self, prompt) -> Dict[str, Endpoint]:
         """
         Returns all loaded usable endpoints for a given prompt
         """
-        endpoints = {}
-        # get all endpoints
-        for e, endpoint in self.endpoints.items():
-            endpoints[e] = endpoint
-        # if prompt requires endpoints, filter all other endpoints
-        required_eps = prompt.get('required_endpoints')
-        if required_eps:
-            valid_eps = [ep.lower() for ep in required_eps]
-            for e, endpoint in self.endpoints.items():
-                if e not in endpoints:
-                    continue
-                if e.lower() not in valid_eps:
-                    del(endpoints[e])
-        # filter any endpoint for which valid_params doesn't contains any provided param by the prompt
-        params = prompt.get('params')
-        if params:
-            for e, endpoint in self.endpoints.items():
-                if e not in endpoints:
-                    continue
-                for p in params:
-                    if p not in endpoint.get('valid_params', {}):
-                        del(endpoints[e])
-        # filter any endpoint for which any required vars is not provided by prompt
-        prompt_vars = prompt.get('vars')
-        if prompt_vars:
-            for e, endpoint in self.endpoints.items():
-                if e not in endpoints:
-                    continue
-                for rv in endpoint.get('required_vars'):
-                    if rv not in prompt_vars:
-                        del(endpoints[e])
-        return endpoints
+        to_filter = set()
+        valid_eps = [ep.lower() for ep in prompt.required_endpoints]
+        for e in self.endpoints:
+            # if prompt requires endpoints, filter all other endpoints
+            if valid_eps and e.lower() not in valid_eps:
+                to_filter.add(e)
+            # filter any endpoint for which valid_params doesn't contains any provided param by the prompt
+            for p in prompt.params:
+                if p not in self.endpoints[e].valid_params:
+                    to_filter.add(e)
+                    break
+            # filter any endpoint for which any required vars is not provided by prompt
+            for rv in self.endpoints[e].required_vars:
+                if rv not in prompt.variables:
+                    to_filter.add(e)
+                    break
+        return {k: v for k, v in self.endpoints.items() if k not in to_filter}

@@ -2,8 +2,10 @@ import json
 import functools
 import sublime
 import sublime_plugin
+from dataclasses import asdict
+from typing import Optional
 
-from .assistant_settings import AssistantAISettings
+from .assistant_settings import AssistantAISettings, Endpoint, Prompt
 from .assistant_thread import AssistantThread
 
 # The global scope ensures that the settings can
@@ -72,7 +74,7 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
             new += indent + line + "\n"
         return new
 
-    def get_text_context(self, region, prompt):
+    def get_text_context(self, region, prompt: Prompt):
         """
         Returns the text content before and after the region based on the given required context.
 
@@ -84,12 +86,12 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
         tuple: A tuple containing text, pre and post strings.
 
         """
-        default_required_context = {
+        default_rc = {
             "unit": "chars",
             "pre_size": None,
             "post_size": None,
         }
-        rc = prompt.get('required_context', default_required_context)
+        rc = prompt.required_context if prompt.required_context else default_rc
         text = self.view.substr(region)
         pre = ''
         post = ''
@@ -151,7 +153,7 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
 
     def context_to_kwargs(self, **kwargs):
         """
-        Takes in keyword arguments and returns a dictionary of context settings.
+        Takes in keyword arguments and returns those with all non-included context.
 
         If 'syntax' is not given, it sets the syntax to the view syntax name or an empty string.
         If 'file' is not given, it sets the file to the extracted variables from the view window.
@@ -202,7 +204,7 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
 class AssistantAiAsyncCommand(AssistantAiTextCommand):
     global settings
 
-    def handle_thread(self, thread, seconds=0):
+    def handle_thread(self, thread: AssistantThread, seconds=0):
         """
         Recursive method for checking in on the async API fetcher
         """
@@ -239,6 +241,8 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
         if not output:
             sublime.status_message(f"AsistantAI: {icon_warn} No response.")
             return
+        if isinstance(output, (list, dict)):
+            output = json.dumps(output, indent="\t")  # TODO: is this the right think?
         # Get the command to exectue as per prompt specs
         cmds_map = {
             'replace': 'assistant_ai_replace_text',
@@ -247,9 +251,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             'output': 'assistant_ai_output_panel',
             'create': 'assistant_ai_create_view',
         }
-        prompt_command = thread.prompt.get('command', {'cmd':'replace'})
-        if isinstance(prompt_command, str):
-            prompt_command = {'cmd': prompt_command}
+        prompt_command = thread.prompt.command
         command = cmds_map.get(prompt_command.get('cmd', 'replace'))
         if not command:
             return
@@ -274,11 +276,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             if index < 0:
                 return
             pid = ids[index]
-            prompt = prompts[pid]
-            self.view.run_command('assistant_ai_prompt', {
-                "prompt": prompt,
-                **kwargs
-            })
+            self.view.run_command('assistant_ai_prompt', {"pid": pid, **kwargs})
         # filter prompts by current state
         context_size = self.get_text_context_size(region)
         prompts = settings.prompts
@@ -287,14 +285,11 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
         prompts = settings.filter_prompts_by_available_context(prompts, context_size)
         ids = []
         items = []
-        for p, prompt in prompts.items():
-            name = prompt.get('name', prompt.get('id', '').replace('_', ' ').title())
-            name = sublime.expand_variables(name, kwargs)
-            desc = prompt.get('description', '')
-            desc = sublime.expand_variables(desc, kwargs)
-            icon = prompt.get('icon', "♡")
-            ids.append(p)
-            items.append([f"{icon} {name}", f"{desc} [{p.upper()}]"])
+        for pid, prompt in prompts.items():
+            ids.append(pid)
+            name = sublime.expand_variables(prompt.name, kwargs)
+            desc = sublime.expand_variables(prompt.description, kwargs)
+            items.append([f"{prompt.icon} {name}", f"{desc} [{pid.upper()}]"])
         if not items:
             icon_warn = "⚠️"
             sublime.status_message(f"AssistantAI: {icon_warn} No available prompts here, in this context.")
@@ -303,7 +298,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
         if win:
             win.show_quick_panel(items=items, on_select=on_select)
 
-    def quick_panel_endpoints(self, prompt, **kwargs):
+    def quick_panel_endpoints(self, **kwargs):
         """
         Display a quick panel with all available endpoints for a given prompt.
         Automatically select the endpoint if only one is available.
@@ -314,22 +309,20 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             if index < 0:
                 return
             eid = ids[index]
-            endpoint = endpoints[eid]
             self.view.run_command('assistant_ai_prompt', {
-                "prompt": prompt,
-                "endpoint": endpoint,
+                "eid": eid,
                 **kwargs
             })
+        pid = kwargs.get('pid')
+        if not pid:
+            return
+        prompt = settings.prompts[pid]
         endpoints = settings.get_endpoints_for_prompt(prompt)
         ids = []
         items = []
-        for e, endpoint in endpoints.items():
-            name = endpoint.get('name', endpoint.get('id', '').replace('_', ' ').title())
-            name_server = endpoint.get('name_server', '')
-            icon = endpoint.get('icon', "↯")
-            url = endpoint.get('url', '')
-            ids.append(e)
-            items.append([f"{icon} {name_server} {name}", f"{url} [{e}]"])
+        for eid, endpoint in endpoints.items():
+            ids.append(eid)
+            items.append([f"{endpoint.icon} {endpoint.server_name} {endpoint.name}", f"{endpoint.url} [{eid}]"])
         # for endpoints, if only one choice is available, auto select it
         if not items:
             icon_warn = "⚠️"
@@ -356,8 +349,6 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
                 return
             text = items[index]
             self.view.run_command('assistant_ai_prompt', {
-                "prompt": kwargs.pop('prompt', None),
-                "endpoint": kwargs.pop('endpoint', None),
                 key: text,
                 **kwargs
             })
@@ -380,8 +371,6 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
         """
         def on_done(text):
             self.view.run_command('assistant_ai_prompt', {
-                "prompt": kwargs.pop('prompt', None),
-                "endpoint": kwargs.pop('endpoint', None),
                 key: text,
                 **kwargs
             })
@@ -394,7 +383,14 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
 class AssistantAiPromptCommand(AssistantAiAsyncCommand):
     global settings
 
-    def run(self, edit, prompt=None, endpoint=None, **kwargs):
+    def run(self, edit, pid: Optional[str]=None, eid: Optional[str]=None, **kwargs):
+        prompt: Optional[Prompt] = None
+        endpoint: Optional[Endpoint] = None
+        # get prompt and endpoint if specificed
+        if pid and pid in settings.prompts:
+            prompt = settings.prompts[pid]
+        if eid and eid in settings.endpoints:
+            endpoint = settings.endpoints[eid]
         # ensure that kwargs have basic context
         kwargs = self.context_to_kwargs(**kwargs)
         # ask user for a prompt to use
@@ -403,31 +399,28 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
                 functools.partial(self.quick_panel_prompts, region=self.get_region(), **kwargs))
             return
         # ask the user for the required inputs by the selected prompt
-        required_inputs = prompt.get('required_inputs', ['text', ])
+        required_inputs = prompt.required_inputs
         required_inputs = [i.lower() for i in required_inputs if i != 'text']
-        inputs_specs = prompt.get('inputs')
         for req_in in required_inputs:
             if req_in in kwargs:
                 continue  # already solved input
             # follow prompt spects for required inputs (if any is given)
-            if inputs_specs and req_in in inputs_specs:
-                input_spec = inputs_specs.get(req_in)
-                input_type = input_spec.get('type', 'text')
-                if input_type == 'list':
-                    input_items = input_spec.get('items', [])
+            if prompt.inputs and req_in in prompt.inputs:
+                input_spec = prompt.inputs.get(req_in)
+                if input_spec and input_spec.input_type == 'list':
                     sublime.set_timeout_async(functools.partial(self.quick_panel_list,
-                        key=req_in, items=input_items,
-                        prompt=prompt, endpoint=endpoint, **kwargs))
+                        key=req_in, items=input_spec.items,
+                        pid=pid, eid=eid, **kwargs))
                     return
             # generic input panel
             sublime.set_timeout_async(functools.partial(self.input_panel,
                     key=req_in, caption=req_in.title(),
-                    prompt=prompt, endpoint=endpoint, **kwargs))
+                    pid=pid, eid=eid, **kwargs))
             return
         # ask user for an endpont to use (if > 1)
         if not endpoint:
             sublime.set_timeout_async(
-                functools.partial(self.quick_panel_endpoints, prompt=prompt, **kwargs))
+                functools.partial(self.quick_panel_endpoints, pid=pid, **kwargs))
             return
         # for each selected region, perform a request
         for region in self.view.sel():
@@ -445,8 +438,8 @@ class AssistantAiDumpCommand(AssistantAiAsyncCommand):
 
     def run(self, edit):
         data = {
-            'endpoints': settings.endpoints,
-            'prompts': settings.prompts
+            'endpoints': {k:asdict(v) for k, v in settings.endpoints.items()},
+            'prompts': {k:asdict(v) for k, v in settings.prompts.items()},
         }
         self.view.run_command("assistant_ai_create_view", {
             "region": None,
