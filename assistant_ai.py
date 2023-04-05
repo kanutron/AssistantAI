@@ -258,7 +258,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
         # if the command spec from prompt forces a syntax, take that
         # otherwise, use the prompt var, or 'Markdown'
         if 'syntax' not in prompt_command:
-            prompt_command['syntax'] = thread.vars.get('syntax', 'Markdown')
+            prompt_command['syntax'] = thread.variables.get('syntax', 'Markdown')
         # run the specified command. kwargs are the params of the command specified in the prompt (if any)
         self.view.run_command(command, {
             "region": [thread.region.begin(), thread.region.end()],

@@ -2,7 +2,7 @@ import json
 import threading
 import sublime
 import http.client
-from typing import Optional
+from typing import Optional, Dict, Any, Union
 from urllib.parse import urlparse, urlencode
 from .assistant_settings import AssistantAISettings, Endpoint, Prompt
 
@@ -17,10 +17,16 @@ class AssistantThread(threading.Thread):
     prompt: Prompt
     endpoint: Endpoint
     region: sublime.Region
+    # thread attribs coming from given prompt
+    variables: Dict[str, str]
+    data: Dict[str, Any]
+    query: str
+    conn: Union[http.client.HTTPConnection, http.client.HTTPSConnection]
 
     def __init__(self, settings: AssistantAISettings, prompt: Prompt, endpoint: Endpoint,
-                 region: sublime.Region, text: str, pre: str, post: str, kwargs):
+                 region: sublime.Region, text: str, pre: str, post: str, kwargs: dict):
         super().__init__()
+        self.timeout = endpoint.timeout if endpoint.timeout else 60
         self.running = False
         self.result = None
         self.settings = settings
@@ -28,13 +34,12 @@ class AssistantThread(threading.Thread):
         self.endpoint = endpoint
         self.region = region
         # prompt vars may add text
-        self.timeout = endpoint.timeout if endpoint.timeout else 60
-        self.vars = self.prepare_vars(text, pre, post, kwargs)
+        self.variables = self.prepare_vars(text, pre, post, kwargs)
         self.data = self.prepare_data()
         self.query = self.prepare_query()
         self.conn = self.prepare_conn()
 
-    def prepare_vars(self, text, pre, post, kwargs):
+    def prepare_vars(self, text: str, pre: str, post: str, kwargs: dict) -> Dict[str, str]:
         """
         Prepares variables to be used in a prompt.
 
@@ -48,7 +53,7 @@ class AssistantThread(threading.Thread):
             dict: The updated dictionary of variables.
         """
         # build base vars as provided by prompt command
-        vars_ = {
+        vars_: Dict[str, str] = {
             "text": text,
             "pre": pre,
             "post": post,
@@ -60,21 +65,21 @@ class AssistantThread(threading.Thread):
             # each line as a string of an array
             if isinstance(v, list):
                 v = '\n'.join(v)
-            vars_[k] = sublime.expand_variables(v, vars_)
+            vars_[k] = str(sublime.expand_variables(v, vars_))
         return vars_
 
-    def prepare_data(self):
+    def prepare_data(self) -> Dict[str, Any]:
         """
         This function prepares data to be sent to an API endpoint.
 
         Returns:
             data (dict): A dictionary containing the prepared data.
         """
-        request = {}
+        request: Dict[str, Any] = {}
         request.update(self.endpoint.request)
         request.update(self.prompt.params)
         for k, v in request.items():
-            request[k] = sublime.expand_variables(v, self.vars)
+            request[k] = sublime.expand_variables(v, self.variables)
         to_filter = set()
         for k, v in request.items():
             if k not in self.endpoint.valid_params:
@@ -83,22 +88,22 @@ class AssistantThread(threading.Thread):
             # TODO: check valid_params specified type.
         return {k:v for k,v in request.items() if k not in to_filter}
 
-    def prepare_query(self):
+    def prepare_query(self) -> str:
         """
         This function prepares query string to be sent to an API endpoint.
 
         Returns:
             query (string): A URL encoded string containing the prepared payload.
         """
-        query = {}
+        query: Dict[str, str] = {}
         query.update(self.endpoint.query)
         query.update(self.prompt.query)
-        data = {}
+        data: Dict[str, str] = {}
         for k, v in query.items():
-            data[k] = sublime.expand_variables(v, self.vars)
+            data[k] = str(sublime.expand_variables(v, self.variables))
         return urlencode(data)
 
-    def prepare_conn(self):
+    def prepare_conn(self) -> Union[http.client.HTTPConnection, http.client.HTTPSConnection]:
         """
         Prepares the HTTP connection based on the endpoint URL.
 
@@ -117,19 +122,19 @@ class AssistantThread(threading.Thread):
             return http.client.HTTPSConnection(hostname, port=port)
         return http.client.HTTPConnection(hostname, port=port)
 
-    def run(self):
+    def run(self) -> None:
         self.running = True
         self.result = self.get_response()
         self.running = False
 
-    def get_response(self):
+    def get_response(self) -> Dict[str, Any]:
         """
         Pass the given data to remote API, returning the response
         """
         data = json.dumps(self.data)
         method = self.endpoint.method
         resource = self.endpoint.resource
-        resource = str(sublime.expand_variables(resource, self.vars))
+        resource = str(sublime.expand_variables(resource, self.variables))
         if self.query:
             resource = f"{resource}?{self.query}"
         headers = self.endpoint.headers if self.endpoint.headers else {}
@@ -137,13 +142,13 @@ class AssistantThread(threading.Thread):
         response = self.conn.getresponse()
         return self.parse_response(json.loads(response.read().decode()))
 
-    def parse_response(self, data):
+    def parse_response(self, data: dict) -> Dict[str, Any]:
         """
         This function takes in a dictionary 'data' and parses it according to a template defined in 'self.endpoint'.
         It returns a dictionary with keys corresponding to the keys in the template and corresponding values either from the parsed 'data'
         or an error message if any error occurred while parsing
         """
-        response = {}
+        response: Dict[str, Any] = {}
         template = self.endpoint.response
         if not template:
             response['error'] = f"The endpoint doesn't specify any reponse template."
@@ -156,7 +161,7 @@ class AssistantThread(threading.Thread):
         response['response'] = data
         return response
 
-    def get_item(self, data, path):
+    def get_item(self, data: Optional[dict], path: str) -> Optional[Any]:
         """Returns the value located at the end of a given path within a nested data structure.
 
         Args:
