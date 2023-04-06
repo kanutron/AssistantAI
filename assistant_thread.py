@@ -38,6 +38,10 @@ class AssistantThread(threading.Thread):
         self.data = self.prepare_data()
         self.query = self.prepare_query()
         self.conn = self.prepare_conn()
+        # if the command spec from prompt forces a syntax, take that
+        # otherwise, use the prompt var (i.e.: current syntax), or 'Markdown'
+        if 'syntax' not in self.prompt.command:
+            self.prompt.command['syntax'] = self.variables.get('syntax', 'Markdown')
 
     def prepare_vars(self, text: str, pre: str, post: str, kwargs: dict) -> Dict[str, str]:
         """

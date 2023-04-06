@@ -55,6 +55,11 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
         if not lines:
             return ''
         text = self.view.substr(sublime.Region(*lines[0]))
+        # row, col = self.view.rowcol(sublime.Region(*lines[0]).begin())
+        # start = self.view.text_point(row, 0)
+        # row, col = self.view.rowcol(sublime.Region(*lines[0]).end())
+        # end = self.view.text_point(row, col)
+        # text = self.view.substr(sublime.Region(start, end))
         indent = ''
         for c in text:
             if c in (' \t'):
@@ -241,29 +246,16 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
         if not output:
             sublime.status_message(f"AsistantAI: {icon_warn} No response.")
             return
+        # TODO: is this the right think?
         if isinstance(output, (list, dict)):
-            output = json.dumps(output, indent="\t")  # TODO: is this the right think?
+            output = json.dumps(output, indent="\t")
         # Get the command to exectue as per prompt specs
-        cmds_map = {
-            'replace': 'assistant_ai_replace_text',
-            'append': 'assistant_ai_append_text',
-            'insert': 'assistant_ai_insert_text',
-            'output': 'assistant_ai_output_panel',
-            'create': 'assistant_ai_create_view',
-        }
-        prompt_command = thread.prompt.command
-        command = cmds_map.get(prompt_command.get('cmd', 'replace'))
-        if not command:
-            return
-        # if the command spec from prompt forces a syntax, take that
-        # otherwise, use the prompt var, or 'Markdown'
-        if 'syntax' not in prompt_command:
-            prompt_command['syntax'] = thread.variables.get('syntax', 'Markdown')
+        sublime_command = thread.prompt.get_sublime_command()
         # run the specified command. kwargs are the params of the command specified in the prompt (if any)
-        self.view.run_command(command, {
+        self.view.run_command(sublime_command, {
             "region": [thread.region.begin(), thread.region.end()],
             "text": output,
-            "kwargs": prompt_command
+            "kwargs": thread.prompt.command
         })
 
     def quick_panel_prompts(self, region: sublime.Region, **kwargs) -> None:

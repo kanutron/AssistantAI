@@ -8,6 +8,9 @@ PKG_NAME = 'AssistantAI'
 SETTINGS_FILE = 'assistant_ai.sublime-settings'
 PKG_SETTINGS_FILE_BLOB = 'assistant_ai*.sublime-settings'
 
+# types for hinting
+Credentials = Dict[str, Any]
+
 @dataclass
 class SettingsDataLoader:
     ident: str
@@ -121,6 +124,12 @@ class SettingsDataLoader:
                 raise TypeError(f"'{key}' must be a list of objects. id='{self.ident}'.")
         return items
 
+    def ensure_dict_str_str(self, data:Dict[str, Any], dismiss:bool=True) -> Dict[str, str]:
+        if dismiss:
+            return {k:v for k,v in data.items() if isinstance(v, str)}
+        else:
+            return {k:str(v) for k,v in data.items()}
+
     def import_pending(self) -> bool:
         if not self.import_spec:
             return False
@@ -187,6 +196,7 @@ class SettingsDataLoader:
         new_spec = copy.deepcopy(parent.spec)
         new_spec.update(self.spec)
         # fine tuning as defined by the user in the 'import' key
+        # TODO: generalize this
         actions = {
             'import': 'delete',
             'required_inputs': 'replace',
@@ -244,7 +254,7 @@ class Endpoint(SettingsDataLoader):
     server_name: Optional[str]
     url: Optional[str]
     timeout: Optional[int]
-    credentials: Optional[Dict[str, Any]]
+    credentials: Optional[Credentials]
     required_credentials: Optional[List[str]]
     headers: Optional[Dict[str, str]]
 
@@ -301,7 +311,7 @@ class Server(SettingsDataLoader):
     url: str
     timeout: int
     # server requirements
-    credentials: Dict[str, Any]
+    credentials: Credentials
     required_credentials: List[str]
     # specs
     headers: Dict[str, str]
@@ -330,12 +340,13 @@ class Server(SettingsDataLoader):
             self.endpoints[eid] = Endpoint(endpoints[eid], eid)
             self.endpoints[eid].set_server_data(self)
 
-    def set_credentials(self, credentials: Dict[str, Any]) -> None:
+    def set_credentials(self, credentials: Credentials) -> None:
         self.credentials = credentials
         # this loads headers without processing again
         self.headers = self.load_dict(self.spec, 'headers')
+        safe_creds = self.ensure_dict_str_str(self.credentials)
         for k, v in self.headers.items():
-            self.headers[k] = str(sublime.expand_variables(v, self.credentials))
+            self.headers[k] = str(sublime.expand_variables(v, safe_creds))
         for eid in self.endpoints:
             self.endpoints[eid].set_server_data(self)
 
@@ -420,6 +431,19 @@ class Prompt(SettingsDataLoader):
         # Command to execute
         self.command = self.load_dict(data, 'command', str_to_dict='cmd')
 
+    def get_sublime_command(self):
+        cmdmap = {
+            'replace': 'assistant_ai_replace_text',
+            'append': 'assistant_ai_append_text',
+            'insert': 'assistant_ai_insert_text',
+            'output': 'assistant_ai_output_panel',
+            'create': 'assistant_ai_create_view',
+        }
+        cmd = self.command.get('cmd', 'replace')
+        if not isinstance(cmd, str):
+            cmd = 'replace'
+        return cmdmap.get(cmd, 'assistant_ai_replace_text')
+
 @dataclass
 class AssistantAISettings(SettingsDataLoader):
     """
@@ -495,7 +519,7 @@ class AssistantAISettings(SettingsDataLoader):
             self.settings_callbacks[file] = settings
         return settings
 
-    def load_credentials_from(self, settings: sublime.Settings) -> Dict[str, Any]:
+    def load_credentials_from(self, settings: sublime.Settings) -> Credentials:
         """
         Extracts valid credentials from settings.
 
@@ -509,7 +533,7 @@ class AssistantAISettings(SettingsDataLoader):
                 creds[cid] = cred
         return creds
 
-    def get_credentials_for(self, server: Server, credentials: dict) -> Dict[str, Any]:
+    def get_credentials_for(self, server: Server, credentials: dict) -> Credentials:
         creds = {}
         if server.sid in credentials and isinstance(credentials[server.sid], dict):
             creds.update(credentials[server.sid])
@@ -517,7 +541,7 @@ class AssistantAISettings(SettingsDataLoader):
             creds.update(credentials)
         return {k:v for k,v in creds.items() if isinstance(v, str)}
 
-    def load_servers_from(self, settings: sublime.Settings, credentials: dict) -> Dict[str, Server]:
+    def load_servers_from(self, settings: sublime.Settings, credentials: Credentials) -> Dict[str, Server]:
         """
         This function loads available servers from settings and return servers
         that can be accessed using provided credentials.
@@ -529,7 +553,7 @@ class AssistantAISettings(SettingsDataLoader):
         :return: A dictionary containing Id and info of servers that can be accessed using provided credentials.
         :rtype: dict
         """
-        servers_list: List[Any] = []
+        servers_list: List[dict] = []
         servers_list += self.load_list_dict(settings, 'default_servers')
         servers_list += self.load_list_dict(settings, 'servers')
         # create Server objects and keep only valid ones
