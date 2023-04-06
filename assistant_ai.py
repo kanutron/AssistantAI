@@ -3,7 +3,7 @@ import functools
 import sublime
 import sublime_plugin
 from dataclasses import asdict
-from typing import Optional
+from typing import Optional, Dict, List, Tuple
 
 from .assistant_settings import AssistantAISettings, Endpoint, Prompt
 from .assistant_thread import AssistantThread
@@ -41,7 +41,7 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
     - get_text_context(region, prompt): Given a region, return the selected text, and context pre and post such text.
     - get_text_context_size(region): returns a dict with the available context parts sizes.
     """
-    def get_region_indentation(self, region):
+    def get_region_indentation(self, region: sublime.Region) -> str:
         """
         Returns the indentation of a region.
 
@@ -63,7 +63,7 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
                 break
         return indent
 
-    def indent_text(self, text, indent):
+    def indent_text(self, text: str, indent: str) -> str:
         """
         This function takes in a string and an integer and returns a modified string.
         The string is split by the newline character and every line is then indented by
@@ -74,7 +74,7 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
             new += indent + line + "\n"
         return new
 
-    def get_text_context(self, region, prompt: Prompt):
+    def get_text_context(self, region: sublime.Region, prompt: Prompt) -> Tuple[str, str, str]:
         """
         Returns the text content before and after the region based on the given required context.
 
@@ -123,7 +123,7 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
                 post = self.view.substr(reg_post)
         return text, pre, post
 
-    def get_text_context_size(self, region):
+    def get_text_context_size(self, region: sublime.Region) -> Dict[str, int]:
         """
         Returns the amount of characters and lines in the text surrounding a given region.
 
@@ -151,7 +151,7 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
             "text_lines": len(self.view.lines(region)),
         }
 
-    def context_to_kwargs(self, **kwargs):
+    def context_to_kwargs(self, **kwargs) -> Dict[str, str]:
         """
         Takes in keyword arguments and returns those with all non-included context.
 
@@ -189,7 +189,7 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
                 kwargs['file_toc'] = '\n'.join(syms)
         return kwargs
 
-    def get_region(self):
+    def get_region(self) -> sublime.Region:
         """
         Returns a Sublime Region object representing the selected region in the view.
         If several regions are selected, returns the minimum region that covers all selected regions.
@@ -204,7 +204,7 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
 class AssistantAiAsyncCommand(AssistantAiTextCommand):
     global settings
 
-    def handle_thread(self, thread: AssistantThread, seconds=0):
+    def handle_thread(self, thread: AssistantThread, seconds: int=0) -> None:
         """
         Recursive method for checking in on the async API fetcher
         """
@@ -266,16 +266,16 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             "kwargs": prompt_command
         })
 
-    def quick_panel_prompts(self, region, **kwargs):
+    def quick_panel_prompts(self, region: sublime.Region, **kwargs) -> None:
         """
         Display a quick panel with all available prompts.
 
         :return: None
         """
-        def on_select(index):
+        def on_select(index: int):
             if index < 0:
                 return
-            pid = ids[index]
+            pid: str = ids[index]
             self.view.run_command('assistant_ai_prompt', {"pid": pid, **kwargs})
         # filter prompts by current state
         context_size = self.get_text_context_size(region)
@@ -298,14 +298,14 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
         if win:
             win.show_quick_panel(items=items, on_select=on_select)
 
-    def quick_panel_endpoints(self, **kwargs):
+    def quick_panel_endpoints(self, **kwargs) -> None:
         """
         Display a quick panel with all available endpoints for a given prompt.
         Automatically select the endpoint if only one is available.
 
         :return: None
         """
-        def on_select(index):
+        def on_select(index: int):
             if index < 0:
                 return
             eid = ids[index]
@@ -335,7 +335,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             return
         win.show_quick_panel(items=items, on_select=on_select)
 
-    def quick_panel_list(self, key, items, **kwargs):
+    def quick_panel_list(self, key: str, items: List[str], **kwargs) -> None:
         """
         Displays a panel with a list of items to select, and upon selection,
         runs the 'assistant_ai_prompt' command with the selected item, as well as
@@ -363,7 +363,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             return
         win.show_quick_panel(items=items, on_select=on_select)
 
-    def input_panel(self, key, caption, **kwargs):
+    def input_panel(self, key:str, caption: str, **kwargs) -> None:
         """
         Displays an input panel to the user with a provided caption and waits for user input to be submitted.
 
@@ -383,7 +383,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
 class AssistantAiPromptCommand(AssistantAiAsyncCommand):
     global settings
 
-    def run(self, edit, pid: Optional[str]=None, eid: Optional[str]=None, **kwargs):
+    def run(self, edit: sublime.Edit, pid: Optional[str]=None, eid: Optional[str]=None, **kwargs) -> None:
         prompt: Optional[Prompt] = None
         endpoint: Optional[Endpoint] = None
         # get prompt and endpoint if specificed
@@ -436,7 +436,7 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
 class AssistantAiDumpCommand(AssistantAiAsyncCommand):
     global settings
 
-    def run(self, edit):
+    def run(self, edit: sublime.Edit):
         data = {
             'endpoints': {k:asdict(v) for k, v in settings.endpoints.items()},
             'prompts': {k:asdict(v) for k, v in settings.prompts.items()},
@@ -448,7 +448,7 @@ class AssistantAiDumpCommand(AssistantAiAsyncCommand):
         })
 
 class AssistantAiReplaceTextCommand(AssistantAiTextCommand):
-    def run(self, edit, region, text, kwargs):
+    def run(self, edit: sublime.Edit, region: sublime.Region, text: str, kwargs: dict):
         """
         Replace the text of a region in a Sublime Text view.
 
@@ -478,7 +478,7 @@ class AssistantAiReplaceTextCommand(AssistantAiTextCommand):
         self.view.replace(edit, region, text)
 
 class AssistantAiAppendTextCommand(AssistantAiTextCommand):
-    def run(self, edit, region, text, kwargs):
+    def run(self, edit: sublime.Edit, region: sublime.Region, text: str, kwargs: dict):
         """
         Inserts `text` into the current view at the end of `region`.
 
@@ -510,7 +510,7 @@ class AssistantAiAppendTextCommand(AssistantAiTextCommand):
         self.view.insert(edit, region.end(), text)
 
 class AssistantAiInsertTextCommand(AssistantAiTextCommand):
-    def run(self, edit, region, text, kwargs):
+    def run(self, edit: sublime.Edit, region: sublime.Region, text: str, kwargs: dict):
         """
         Replaces a given placeholder with the given text within the specified region.
 
@@ -532,7 +532,7 @@ class AssistantAiInsertTextCommand(AssistantAiTextCommand):
             self.view.replace(edit, match, text)
 
 class AssistantAiOutputPanelCommand(AssistantAiTextCommand):
-    def run(self, edit, region, text, kwargs):
+    def run(self, edit: sublime.Edit, region: sublime.Region, text: str, kwargs: dict):
         """
         Display output text in a new output panel.
 
@@ -556,7 +556,7 @@ class AssistantAiOutputPanelCommand(AssistantAiTextCommand):
         self.output_panel.run_command('append', {'characters': text})
 
 class AssistantAiCreateViewCommand(AssistantAiTextCommand):
-    def run(self, edit, region, text, kwargs):
+    def run(self, edit: sublime.Edit, region: sublime.Region, text: str, kwargs: dict):
         """
         Create a new view and assign the appropriate syntax to it. Add the output provided to the new view.
 
