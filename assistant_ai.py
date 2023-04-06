@@ -425,7 +425,7 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
             thread.start()
             self.handle_thread(thread)
 
-class AssistantAiDumpCommand(AssistantAiAsyncCommand):
+class AssistantAiDumpCommand(AssistantAiTextCommand):
     global settings
 
     def run(self, edit: sublime.Edit):
