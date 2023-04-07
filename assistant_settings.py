@@ -701,6 +701,7 @@ class AssistantAISettings(SettingsDataLoader):
                     to_filter.add(e)
                     break
             # filter any endpoint for which any required vars is not provided by prompt
+            # TODO: filter also endpoint for which don't accept any var provided by prompt?
             for rv in self.endpoints[e].required_vars:
                 if rv not in prompt.variables:
                     to_filter.add(e)

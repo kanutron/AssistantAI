@@ -207,6 +207,12 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
         r_end = regions[-1].end()
         return sublime.Region(r_start, r_end)
 
+    def get_stack_from(self, kwargs):
+        stack = kwargs.pop('stack', [])
+        if not stack or not isinstance(stack, list):
+            stack = []
+        return stack
+
 class AssistantAiAsyncCommand(AssistantAiTextCommand):
     global settings
 
@@ -230,8 +236,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             msg = f"AssistantAI is working {progress} - Timout in {timeout-seconds}s"
             sublime.status_message(msg)
             # Wait a second, then check on it again
-            sublime.set_timeout(lambda:
-                self.handle_thread(thread, seconds + 1), 1000)
+            self.run_in(self.handle_thread, delay=1000, thread=thread, seconds=seconds + 1)
             return
         # If we finished with no result, something is wrong
         if not thread.result:
@@ -250,6 +255,13 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
         # TODO: is this the right think?
         if isinstance(output, (list, dict)):
             output = json.dumps(output, indent="\t")
+        # process stack
+        if thread.stack:
+            frame = thread.stack.pop()
+            frame[frame['__store_to']] = output
+            # TODO: reuse eid if compatible?
+            self.view.run_command('assistant_ai_prompt', {'stack': thread.stack, **frame})
+            return
         # Get the command to exectue as per prompt specs
         sublime_command = thread.prompt.get_sublime_command()
         # run the specified command. kwargs are the params of the command specified in the prompt (if any)
@@ -269,7 +281,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             if index < 0:
                 return
             pid: str = ids[index]
-            self.view.run_command('assistant_ai_prompt', {"pid": pid, **kwargs})
+            self.view.run_command('assistant_ai_prompt', {'pid': pid, **kwargs})
         # filter prompts by current state
         region = kwargs.get('region')
         if not region:
@@ -305,10 +317,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             if index < 0:
                 return
             eid = ids[index]
-            self.view.run_command('assistant_ai_prompt', {
-                "eid": eid,
-                **kwargs
-            })
+            self.view.run_command('assistant_ai_prompt', {'eid': eid, **kwargs})
         pid = kwargs.get('pid')
         if not pid:
             return
@@ -344,10 +353,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             if index < 0:
                 return
             text = items[index]
-            self.view.run_command('assistant_ai_prompt', {
-                key: text,
-                **kwargs
-            })
+            self.view.run_command('assistant_ai_prompt', {key: text, **kwargs})
         if not items:
             icon_warn = "⚠️"
             sublime.status_message(f"AssistantAI: {icon_warn} No available items for {key}.")
@@ -366,10 +372,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
         :return: None
         """
         def on_done(text):
-            self.view.run_command('assistant_ai_prompt', {
-                key: text,
-                **kwargs
-            })
+            self.view.run_command('assistant_ai_prompt', {key: text, **kwargs})
         win = self.view.window()
         if not win:
             return
@@ -411,6 +414,17 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
                 if input_spec and input_spec.type == 'list':
                     self.run_in(self.quick_panel_list, key=req_in, items=input_spec.items, **kwargs)
                     return
+                if input_spec and input_spec.type == 'text_from_prompt':
+                    # pop stack (if any)
+                    stack = self.get_stack_from(kwargs)
+                    kwargs['__store_to'] = req_in
+                    stack.append(kwargs)
+                    prompt_id = input_spec.prompt_id
+                    prompt_args = input_spec.prompt_args
+                    if not prompt_args:
+                        prompt_args = {}
+                    self.view.run_command('assistant_ai_prompt', {'pid': prompt_id, 'stack': stack, **prompt_args})
+                    return
             # generic input panel
             self.run_in(self.input_panel, key=req_in, caption=req_in.title(), **kwargs)
             return
@@ -425,7 +439,8 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
                 continue
             # TODO: hande_thread is not blocking, so we don't take advantadge of multi selection here.
             # BUG: when user selects multi text, the thread is overwritten. Complex fix ahead!
-            thread = AssistantThread(settings, prompt, endpoint, region, text, pre, post, kwargs)
+            stack = self.get_stack_from(kwargs)
+            thread = AssistantThread(settings, prompt, endpoint, region, text, pre, post, stack, kwargs)
             thread.start()
             self.handle_thread(thread)
 

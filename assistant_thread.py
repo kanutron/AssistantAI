@@ -2,7 +2,7 @@ import json
 import threading
 import sublime
 import http.client
-from typing import Optional, Dict, Any, Union
+from typing import Optional, Dict, List, Any, Union
 from urllib.parse import urlparse, urlencode
 from .assistant_settings import AssistantAISettings, Endpoint, Prompt
 
@@ -17,6 +17,7 @@ class AssistantThread(threading.Thread):
     prompt: Prompt
     endpoint: Endpoint
     region: sublime.Region
+    stack: List[dict]
     # thread attribs coming from given prompt
     variables: Dict[str, str]
     data: Dict[str, Any]
@@ -24,7 +25,7 @@ class AssistantThread(threading.Thread):
     conn: Union[http.client.HTTPConnection, http.client.HTTPSConnection]
 
     def __init__(self, settings: AssistantAISettings, prompt: Prompt, endpoint: Endpoint,
-                 region: sublime.Region, text: str, pre: str, post: str, kwargs: dict):
+                 region: sublime.Region, text: str, pre: str, post: str, stack: List[dict], kwargs: dict):
         super().__init__()
         self.timeout = endpoint.timeout if endpoint.timeout else 60
         self.running = False
@@ -33,6 +34,7 @@ class AssistantThread(threading.Thread):
         self.prompt = prompt
         self.endpoint = endpoint
         self.region = region
+        self.stack = stack
         # prompt vars may add text
         self.variables = self.prepare_vars(text, pre, post, kwargs)
         self.data = self.prepare_data()
