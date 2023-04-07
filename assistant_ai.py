@@ -195,7 +195,7 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
                 kwargs['file_toc'] = '\n'.join(syms)
         return kwargs
 
-    def get_region(self) -> sublime.Region:
+    def get_full_region(self) -> sublime.Region:
         """
         Returns a Sublime Region object representing the selected region in the view.
         If several regions are selected, returns the minimum region that covers all selected regions.
@@ -259,7 +259,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             "kwargs": thread.prompt.command
         })
 
-    def quick_panel_prompts(self, region: sublime.Region, **kwargs) -> None:
+    def quick_panel_prompts(self, **kwargs) -> None:
         """
         Display a quick panel with all available prompts.
 
@@ -271,6 +271,9 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             pid: str = ids[index]
             self.view.run_command('assistant_ai_prompt', {"pid": pid, **kwargs})
         # filter prompts by current state
+        region = kwargs.get('region')
+        if not region:
+            region = self.get_full_region()
         context_size = self.get_text_context_size(region)
         prompts = settings.prompts
         prompts = settings.filter_prompts_by_syntax(prompts, kwargs.get('syntax'))
@@ -394,7 +397,7 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
         kwargs = self.context_to_kwargs(**kwargs)
         # ask user for a prompt to use
         if not prompt:
-            self.run_in(self.quick_panel_prompts, region=self.get_region(), **kwargs)
+            self.run_in(self.quick_panel_prompts, **kwargs)
             return
         # ask the user for the required inputs by the selected prompt
         required_inputs = prompt.required_inputs
