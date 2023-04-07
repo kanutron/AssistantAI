@@ -3,7 +3,7 @@ import functools
 import sublime
 import sublime_plugin
 from dataclasses import asdict
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List, Tuple, Callable
 
 from .assistant_settings import AssistantAISettings, Endpoint, Prompt
 from .assistant_thread import AssistantThread
@@ -171,6 +171,7 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
         Returns:
         A dictionary of context settings.
         """
+        # TODO: rowcol for selection.begin and selection.end to be inlcuded
         if 'syntax' not in kwargs:
             syntax = self.view.syntax()
             kwargs['syntax'] = syntax.name if syntax else ''
@@ -372,13 +373,19 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
         win.show_input_panel(caption=caption, initial_text="",
             on_done=on_done, on_change=None, on_cancel=None)
 
+    def run_in(self, callback: Callable, delay: int=0, **kwargs):
+        func = functools.partial(callback, **kwargs)
+        sublime.set_timeout_async(func, delay)
+
 class AssistantAiPromptCommand(AssistantAiAsyncCommand):
     global settings
 
-    def run(self, edit: sublime.Edit, pid: Optional[str]=None, eid: Optional[str]=None, **kwargs) -> None:
+    def run(self, edit: sublime.Edit, **kwargs) -> None:
+        # get prompt and endpoint if specificed
+        pid = kwargs.get('pid')
+        eid = kwargs.get('eid')
         prompt: Optional[Prompt] = None
         endpoint: Optional[Endpoint] = None
-        # get prompt and endpoint if specificed
         if pid and pid in settings.prompts:
             prompt = settings.prompts[pid]
         if eid and eid in settings.endpoints:
@@ -387,8 +394,7 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
         kwargs = self.context_to_kwargs(**kwargs)
         # ask user for a prompt to use
         if not prompt:
-            sublime.set_timeout_async(
-                functools.partial(self.quick_panel_prompts, region=self.get_region(), **kwargs))
+            self.run_in(self.quick_panel_prompts, region=self.get_region(), **kwargs)
             return
         # ask the user for the required inputs by the selected prompt
         required_inputs = prompt.required_inputs
@@ -400,19 +406,14 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
             if prompt.inputs and req_in in prompt.inputs:
                 input_spec = prompt.inputs.get(req_in)
                 if input_spec and input_spec.input_type == 'list':
-                    sublime.set_timeout_async(functools.partial(self.quick_panel_list,
-                        key=req_in, items=input_spec.items,
-                        pid=pid, eid=eid, **kwargs))
+                    self.run_in(self.quick_panel_list, key=req_in, items=input_spec.items, **kwargs)
                     return
             # generic input panel
-            sublime.set_timeout_async(functools.partial(self.input_panel,
-                    key=req_in, caption=req_in.title(),
-                    pid=pid, eid=eid, **kwargs))
+            self.run_in(self.input_panel, key=req_in, caption=req_in.title(), **kwargs)
             return
         # ask user for an endpont to use (if > 1)
         if not endpoint:
-            sublime.set_timeout_async(
-                functools.partial(self.quick_panel_endpoints, pid=pid, **kwargs))
+            self.run_in(self.quick_panel_endpoints, **kwargs)
             return
         # for each selected region, perform a request
         for region in self.view.sel():
