@@ -352,11 +352,13 @@ class Server(SettingsDataLoader):
 
 @dataclass
 class PromptInput(SettingsDataLoader):
-    input_name: str
-    input_type: str
+    name: str
+    type: str
     caption: str
     description: str
     items: Optional[List[str]]
+    prompt_id: Optional[str]
+    prompt_args: Optional[Dict[str, Any]]
 
     def __init__(self, data: dict, ident: Optional[str]=None, item_type: str='prompt_input'):
         """
@@ -365,16 +367,20 @@ class PromptInput(SettingsDataLoader):
         """
         super().__init__(data, ident, item_type)
         # Prompt input specification
-        self.input_name = self.ident
-        self.input_type = self.load_str(data, 'type', 'text').lower()
+        self.name = self.ident
+        self.type = self.load_str(data, 'type', 'text').lower()
         self.caption = self.load_str(data, 'caption', self.ident.replace('_', ' ').title())
         self.description = self.load_str(data, 'description', self.caption)
-        if self.input_type == 'list':
+        if self.type == 'list':
             self.items = self.load_list_str(data, 'items')
-        if self.input_type == 'list_from_prompt':
-            ...  # TODO
-        if self.input_type == 'text_from_prompt':
-            ...  # TODO
+        elif self.type == 'text':
+            ...
+        elif self.type == 'list_from_prompt':
+            self.prompt_id = self.load_str(data, 'prompt_id')
+            self.prompt_args = self.load_dict(data, 'prompt_args')
+        elif self.type == 'text_from_prompt':
+            self.prompt_id = self.load_str(data, 'prompt_id')
+            self.prompt_args = self.load_dict(data, 'prompt_args')
 
 @dataclass
 class Prompt(SettingsDataLoader):

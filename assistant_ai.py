@@ -405,7 +405,7 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
             # follow prompt spects for required inputs (if any is given)
             if prompt.inputs and req_in in prompt.inputs:
                 input_spec = prompt.inputs.get(req_in)
-                if input_spec and input_spec.input_type == 'list':
+                if input_spec and input_spec.type == 'list':
                     self.run_in(self.quick_panel_list, key=req_in, items=input_spec.items, **kwargs)
                     return
             # generic input panel
