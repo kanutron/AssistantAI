@@ -287,6 +287,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             region = self.get_full_region()
         context_size = self.get_text_context_size(region)
         prompts = settings.prompts
+        prompts = settings.filter_prompts_by_visibility(prompts)
         prompts = settings.filter_prompts_by_syntax(prompts, kwargs.get('syntax'))
         prompts = settings.filter_prompts_by_available_endpoints(prompts)
         prompts = settings.filter_prompts_by_available_context(prompts, context_size)

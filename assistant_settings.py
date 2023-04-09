@@ -451,6 +451,7 @@ class Prompt(SettingsDataLoader):
     name: str
     icon: str
     description: str
+    visible: bool
     # input definitions
     inputs: Dict[str, PromptInput]
     # prompt requirements
@@ -477,6 +478,7 @@ class Prompt(SettingsDataLoader):
         self.name = self.load_str(data, 'name', self.pid.replace('_', ' ').title())
         self.icon = self.load_str(data, 'icon', '♡')
         self.description = self.load_str(data, 'description', self.name)
+        self.visible = data.get('visible', True)
         # Input definitions
         self.inputs = {}
         inputs = self.load_dict(data, 'inputs')
@@ -746,6 +748,16 @@ class AssistantAISettings(SettingsDataLoader):
                 continue
             valid_syntax = [syn.lower() for syn in prompt.required_syntax]
             if syntax not in valid_syntax:
+                to_filter.add(p)
+        return {k: v for k, v in prompts.items() if k not in to_filter}
+
+    def filter_prompts_by_visibility(self, prompts: Dict[str, Prompt]) -> Dict[str, Prompt]:
+        """
+        Returns all loaded prompts filtering by visible flag
+        """
+        to_filter = set()
+        for p, prompt in prompts.items():
+            if not prompt.visible:
                 to_filter.add(p)
         return {k: v for k, v in prompts.items() if k not in to_filter}
 
