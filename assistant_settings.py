@@ -501,6 +501,7 @@ class Prompt(SettingsDataLoader):
     def get_sublime_command(self):
         cmdmap = {
             'replace': 'assistant_ai_replace_text',
+            'prepend': 'assistant_ai_prepend_text',
             'append': 'assistant_ai_append_text',
             'insert': 'assistant_ai_insert_text',
             'output': 'assistant_ai_output_panel',

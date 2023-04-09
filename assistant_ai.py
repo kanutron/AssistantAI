@@ -508,6 +508,38 @@ class AssistantAiReplaceTextCommand(AssistantAiTextCommand):
         region = sublime.Region(*region)
         self.view.replace(edit, region, text)
 
+class AssistantAiPrependTextCommand(AssistantAiTextCommand):
+    def run(self, edit: sublime.Edit, region: sublime.Region, text: str, kwargs: dict):
+        """
+        Inserts `text` into the current view at the beginning of `region`.
+
+        Args:
+        - edit (sublime.Edit): The edit token representing this modification.
+        - region (tuple): A tuple containing two integers that represents a region of text in the view.
+        - text (str): The text to insert.
+        - kwargs (dict): A dictionary that contains the options for text insertion.
+
+        Returns:
+        - None
+
+        Options:
+        - strip_output (bool, default=True): Whether to strip leading/trailing whitespace from `text`.
+        - new_line_before (bool, default=True): Whether to insert a new line before `text`.
+        - new_line_after (bool, default=True): Whether to insert a new line after `text`.
+        - preserve_indentation (bool, default=True): Whether to preserve the indentation of `region`.
+        """
+        if kwargs.get('strip_output', True):
+            text = text.strip()
+        if kwargs.get('new_line_before', False):
+            text = "\n" + text
+        if kwargs.get('new_line_after', False):
+            text = text + "\n"
+        if kwargs.get('preserve_indentation', True):
+            indent = self.get_region_indentation(region)
+            text = self.indent_text(text, indent)
+        region = sublime.Region(*region)
+        self.view.insert(edit, region.begin(), text)
+
 class AssistantAiAppendTextCommand(AssistantAiTextCommand):
     def run(self, edit: sublime.Edit, region: sublime.Region, text: str, kwargs: dict):
         """
@@ -530,9 +562,9 @@ class AssistantAiAppendTextCommand(AssistantAiTextCommand):
         """
         if kwargs.get('strip_output', True):
             text = text.strip()
-        if kwargs.get('new_line_before', True):
+        if kwargs.get('new_line_before', False):
             text = "\n" + text
-        if kwargs.get('new_line_after', True):
+        if kwargs.get('new_line_after', False):
             text = text + "\n"
         if kwargs.get('preserve_indentation', True):
             indent = self.get_region_indentation(region)
