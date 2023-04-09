@@ -3,7 +3,7 @@ import functools
 import sublime
 import sublime_plugin
 from dataclasses import asdict
-from typing import Optional, Dict, List, Tuple, Callable
+from typing import Optional, Union, Dict, List, Tuple, Callable
 
 from .assistant_settings import AssistantAISettings, Endpoint, Prompt
 from .assistant_thread import AssistantThread
@@ -207,12 +207,6 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
         r_end = regions[-1].end()
         return sublime.Region(r_start, r_end)
 
-    def get_stack_from(self, kwargs):
-        stack = kwargs.pop('stack', [])
-        if not stack or not isinstance(stack, list):
-            stack = []
-        return stack
-
 class AssistantAiAsyncCommand(AssistantAiTextCommand):
     global settings
 
@@ -222,7 +216,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
         """
         timeout = thread.timeout
         icon_warn = "⚠️"
-        icon_progress_steps = ["⬜️","◻️","◽️","▫️","◽️","◻️",]
+        icon_progress_steps = "▁▂▃▄▅▆▇▉▇▆▅▄▃▂"  # Alternate progress icons: ▊▋▌▍▎▏▎▍▌▋▊▉
         # If we ran out of time, let user know, stop checking on the thread
         if seconds > timeout:
             msg = f"AssistantAI: {icon_warn} Query ran out of time! {timeout}s"
@@ -233,7 +227,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
         if thread.running:
             step = seconds % len(icon_progress_steps)
             progress = icon_progress_steps[step]
-            msg = f"AssistantAI is working {progress} - Timout in {timeout-seconds}s"
+            msg = f"AssistantAI is working {progress} Timout in {timeout-seconds}s"
             sublime.status_message(msg)
             # Wait a second, then check on it again
             self.run_in(self.handle_thread, delay=1000, thread=thread, seconds=seconds + 1)
@@ -242,29 +236,34 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
         if not thread.result:
             sublime.status_message(f"AssistantAI: {icon_warn} Something is wrong with remote server - aborting")
             return
-        # Collect the result and act as per command spec
         sublime.status_message("AssistantAI: Done!")
+        # Collect the result and act as per command spec
         error = thread.result.get('error')
         if error:
             sublime.status_message(f"AsistantAI: {icon_warn} {error}")
             return
+        # process stacked prompts if anything there
+        if thread.stack:
+            frame = thread.stack.pop()
+            if '__text_to' in frame:
+                # returning from a 'text_from_prompt' call
+                frame[frame['__text_to']] = thread.result.get('output')
+                del(frame['__text_to'])
+                self.view.run_command('assistant_ai_prompt', {'stack': thread.stack, **frame})
+                return
+            if '__list_to' in frame:
+                # returning from a 'list_from_prompt' call
+                frame[frame['__list_to']] = thread.result.get('list')
+                del(frame['__list_to'])
+                self.view.run_command('assistant_ai_prompt', {'stack': thread.stack, **frame})
+                return
+        # no stack, just execute the prompt command
         output = thread.result.get('output')
         if not output:
             sublime.status_message(f"AsistantAI: {icon_warn} No response.")
             return
-        # TODO: is this the right think?
-        if isinstance(output, (list, dict)):
-            output = json.dumps(output, indent="\t")
-        # process stack
-        if thread.stack:
-            frame = thread.stack.pop()
-            frame[frame['__store_to']] = output
-            # TODO: reuse eid if compatible?
-            self.view.run_command('assistant_ai_prompt', {'stack': thread.stack, **frame})
-            return
-        # Get the command to exectue as per prompt specs
+        # Get the command to exectue as per prompt specs, since there is nothin in stack to process
         sublime_command = thread.prompt.get_sublime_command()
-        # run the specified command. kwargs are the params of the command specified in the prompt (if any)
         self.view.run_command(sublime_command, {
             "region": [thread.region.begin(), thread.region.end()],
             "text": output,
@@ -293,10 +292,11 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
         prompts = settings.filter_prompts_by_available_context(prompts, context_size)
         ids = []
         items = []
+        str_kwargs = settings.ensure_dict_str_str(kwargs)
         for pid, prompt in prompts.items():
             ids.append(pid)
-            name = sublime.expand_variables(prompt.name, kwargs)
-            desc = sublime.expand_variables(prompt.description, kwargs)
+            name = sublime.expand_variables(prompt.name, str_kwargs)
+            desc = sublime.expand_variables(prompt.description, str_kwargs)
             items.append([f"{prompt.icon} {name}", f"{desc} [{pid.upper()}]"])
         if not items:
             icon_warn = "⚠️"
@@ -340,7 +340,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             return
         win.show_quick_panel(items=items, on_select=on_select)
 
-    def quick_panel_list(self, key: str, items: List[str], **kwargs) -> None:
+    def quick_panel_list(self, key: str, items: Union[List[str], List[List[str]]], **kwargs) -> None:
         """
         Displays a panel with a list of items to select, and upon selection,
         runs the 'assistant_ai_prompt' command with the selected item, as well as
@@ -353,6 +353,8 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             if index < 0:
                 return
             text = items[index]
+            if isinstance(text, list):
+                text = text[0]
             self.view.run_command('assistant_ai_prompt', {key: text, **kwargs})
         if not items:
             icon_warn = "⚠️"
@@ -383,6 +385,12 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
         func = functools.partial(callback, **kwargs)
         sublime.set_timeout_async(func, delay)
 
+    def get_stack_from(self, kwargs):
+        stack = kwargs.pop('stack', [])
+        if not stack or not isinstance(stack, list):
+            stack = []
+        return stack
+
 class AssistantAiPromptCommand(AssistantAiAsyncCommand):
     global settings
 
@@ -402,7 +410,7 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
         if not prompt:
             self.run_in(self.quick_panel_prompts, **kwargs)
             return
-        # ask the user for the required inputs by the selected prompt
+        # required inputs by the selected prompt (asking the user, or invoking other prompts)
         required_inputs = prompt.required_inputs
         required_inputs = [i.lower() for i in required_inputs if i != 'text']
         for req_in in required_inputs:
@@ -415,14 +423,26 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
                     self.run_in(self.quick_panel_list, key=req_in, items=input_spec.items, **kwargs)
                     return
                 if input_spec and input_spec.type == 'text_from_prompt':
-                    # pop stack (if any)
+                    # the text will be retreived stacking another prompt
                     stack = self.get_stack_from(kwargs)
-                    kwargs['__store_to'] = req_in
+                    kwargs['__text_to'] = req_in
                     stack.append(kwargs)
                     prompt_id = input_spec.prompt_id
-                    prompt_args = input_spec.prompt_args
-                    if not prompt_args:
-                        prompt_args = {}
+                    prompt_args = {} if not input_spec.prompt_args else input_spec.prompt_args
+                    self.view.run_command('assistant_ai_prompt', {'pid': prompt_id, 'stack': stack, **prompt_args})
+                    return
+                if input_spec and input_spec.type == 'list_from_prompt':
+                    items_key = f"__items_for_{req_in}"
+                    if items_key in kwargs:
+                        items = kwargs.pop(items_key)
+                        self.run_in(self.quick_panel_list, key=req_in, items=items, **kwargs)
+                        return
+                    # the list of items for that input will be retreived stacking another prompt
+                    stack = self.get_stack_from(kwargs)
+                    kwargs['__list_to'] = items_key
+                    stack.append(kwargs)
+                    prompt_id = input_spec.prompt_id
+                    prompt_args = {} if not input_spec.prompt_args else input_spec.prompt_args
                     self.view.run_command('assistant_ai_prompt', {'pid': prompt_id, 'stack': stack, **prompt_args})
                     return
             # generic input panel

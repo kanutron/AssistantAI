@@ -129,13 +129,24 @@ class AssistantThread(threading.Thread):
         return http.client.HTTPConnection(hostname, port=port)
 
     def run(self) -> None:
+        """
+        Sets the 'running' attribute to True, gets a response using the 'get_response' method,
+        assigns the response to the 'result' attribute, and sets the 'running' attribute to False.
+
+        Parameters:
+        self: An instance of the class.
+        """
         self.running = True
         self.result = self.get_response()
         self.running = False
 
     def get_response(self) -> Dict[str, Any]:
         """
-        Pass the given data to remote API, returning the response
+        Send a request to the endpoint specified in self.endpoint, with the data
+        specified in self.data, and return the parsed JSON response.
+
+        :return: A dictionary containing the response data.
+        :rtype: Dict[str, Any]
         """
         data = json.dumps(self.data)
         method = self.endpoint.method
@@ -149,22 +160,14 @@ class AssistantThread(threading.Thread):
         return self.parse_response(json.loads(response.read().decode()))
 
     def parse_response(self, data: dict) -> Dict[str, Any]:
+        """This method receives a dictionary as input and passes it to the endpoint object to parse the response.
+
+        :param data: A dictionary containing the response data.
+        :type data: dict
+        :return: A dictionary representing the parsed response.
+        :rtype: dict
         """
-        This function takes in a dictionary 'data' and parses it according to a template defined in 'self.endpoint'.
-        It returns a dictionary with keys corresponding to the keys in the template and corresponding values either from the parsed 'data'
-        or an error message if any error occurred while parsing
-        """
-        response: Dict[str, Any] = {}
-        template = self.endpoint.response
-        if not template:
-            response['error'] = f"The endpoint doesn't specify any reponse template."
-            return response
-        for k, path in template.items():
-            item = self.get_item(data, str(path))
-            if item is None and k != 'error':
-                response['error'] = f"Error getting response item {k} in '{path}'"
-            response[k] = item
-        response['response'] = data
+        response = self.endpoint.parse_response(data)
         return response
 
     def get_item(self, data: Optional[dict], path: str) -> Optional[Any]:

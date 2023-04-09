@@ -3,6 +3,7 @@ import copy
 import uuid
 from dataclasses import dataclass
 from typing import Dict, List, Set, Any, Optional, Union
+from .assistant_qdict import QDict
 
 PKG_NAME = 'AssistantAI'
 SETTINGS_FILE = 'assistant_ai.sublime-settings'
@@ -248,7 +249,7 @@ class Endpoint(SettingsDataLoader):
     request: Dict[str, Any]
     query: Dict[str, str]
     # response data retrieval specification
-    response: Dict[str, str]
+    response: Dict[str, Any]
     # server data
     sid: Optional[str]
     server_name: Optional[str]
@@ -279,6 +280,18 @@ class Endpoint(SettingsDataLoader):
         self.query = self.load_dict(data, 'query')
         # response data retrieval specification
         self.response = self.load_dict(data, 'response')
+        if 'paths' not in self.response:  # backwards compatibility to simple response definition
+            self.response['paths'] = {
+                'error': self.response.get('error', 'error'),
+                'text': self.response.get('output', 'data'),
+            }
+            self.response['output'] = "${text}"
+            if 'error' in self.response:
+                del(self.response['error'])
+        # ensure we have paths for text, list error, and vars
+        self.response['paths'].setdefault('text', 'data')
+        self.response['paths'].setdefault('error', 'error')
+        self.response.setdefault('output', "${text}")
         # server data
         self.sid = None
         self.server_name = None
@@ -303,6 +316,51 @@ class Endpoint(SettingsDataLoader):
         self.credentials = server.credentials
         self.required_credentials = server.required_credentials
         self.headers = server.headers
+
+    def parse_response(self, data: dict) -> Dict[str, Any]:
+        response: Dict[str, Any] = {}
+        # get the response remplate of the endpoint
+        spec = self.response
+        paths = spec.get('paths', {})
+        output = spec.get('output', '${text}')
+        if not spec or not paths or not isinstance(paths, dict):
+            response['error'] = f"The endpoint doesn't specify any valid reponse template."
+            return response
+        # get the data from specified paths
+        qdata = QDict(data)
+        for key, path in paths.items():
+            if '*' in path:
+                response[key] = qdata.values(path)
+            else:
+                response[key] = qdata.get(path)
+        # collect all vars from the object retreived with path 'vars'
+        if 'vars' in response and isinstance(response['vars'], dict):
+            for k, v in response['vars'].items():
+                if not isinstance(v, (list, dict)):
+                    k = '_' + str(k) if k in response else str(k)
+                    response[k] = str(v)
+        # expand output, with keys in response and collected vars
+        str_response = self.ensure_dict_str_str(response)
+        response['output'] = sublime.expand_variables(output, str_response)
+        # prepare the returned list (used for inputs of type 'list_from_prompt')
+        if 'list' in response and isinstance(response['list'], list):
+            new_list = []
+            templates = spec.get('templates', {})
+            list_item_template = templates.get('list_item')
+            if list_item_template:
+                for item in response['list']:
+                    if isinstance(item, dict):
+                        str_item = self.ensure_dict_str_str(item)
+                        new_item = sublime.expand_variables(list_item_template, str_item)
+                        new_list.append(new_item)
+                    else:
+                        new_list.append([str(item)])
+            else:
+                new_list = [[str(item)] for item in response['list']]
+            response['list'] = new_list
+        # include raw response
+        response['response'] = data
+        return response
 
 @dataclass
 class Server(SettingsDataLoader):
@@ -371,6 +429,9 @@ class PromptInput(SettingsDataLoader):
         self.type = self.load_str(data, 'type', 'text').lower()
         self.caption = self.load_str(data, 'caption', self.ident.replace('_', ' ').title())
         self.description = self.load_str(data, 'description', self.caption)
+        self.items = None
+        self.prompt_id = None
+        self.prompt_args = None
         if self.type == 'list':
             self.items = self.load_list_str(data, 'items')
         elif self.type == 'text':
