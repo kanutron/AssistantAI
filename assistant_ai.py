@@ -422,6 +422,9 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
                 if input_spec and input_spec.type == 'list':
                     self.run_in(self.quick_panel_list, key=req_in, items=input_spec.items, **kwargs)
                     return
+                if input_spec and input_spec.type == 'text':
+                    self.run_in(self.input_panel, key=req_in, caption=input_spec.caption, **kwargs)
+                    return
                 if input_spec and input_spec.type == 'text_from_prompt':
                     # the text will be retreived stacking another prompt
                     stack = self.get_stack_from(kwargs)
@@ -446,7 +449,7 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
                     self.view.run_command('assistant_ai_prompt', {'pid': prompt_id, 'stack': stack, **prompt_args})
                     return
             # generic input panel
-            self.run_in(self.input_panel, key=req_in, caption=req_in.title(), **kwargs)
+            self.run_in(self.input_panel, key=req_in, caption=req_in.replace('_', ' ').title(), **kwargs)
             return
         # ask user for an endpont to use (if > 1)
         if not endpoint:
