@@ -38,31 +38,6 @@
 			},
 		},
 		{
-			"id": "python_explain_previous_lines",
-			"name": "Explain previous lines",
-			"icon": "🐍",
-			"description": "Explain the previous 32 lines of code.",
-			"required_inputs": [],
-			"required_syntax": ["python"],
-			"required_context": {
-				"unit": "lines",
-				"pre_size": 32
-			},
-			"vars": {
-				"text": [
-					"Explain the following ${syntax} code following these rules:",
-					"* Be verbose, and explain line by line, if needed.",
-					"* Use Markdown to refer to variables or other symbols.",
-					"",
-					"${pre}",
-				],
-			},
-			"command": {
-				"cmd": "output",
-				"syntax": "Markdown"
-			},
-		},
-		{
 			"id": "python_explain_selection",
 			"name": "Explain selected text",
 			"icon": "🐍",
@@ -72,10 +47,9 @@
 			"vars": {
 				"text": [
 					"Explain the following ${syntax} code following these rules:",
-					"* Be verbose, and explain line by line, if needed.",
-					"* Use Markdown.",
+					"* Be verbose, and explain line by line.",
+					"* Use Markdown syntax.",
 					"",
-					"${pre}",
 					"${text}",
 				],
 			},
