@@ -252,6 +252,7 @@ class Endpoint(SettingsDataLoader):
     response: Dict[str, Any]
     # server data
     sid: Optional[str]
+    sid_base: Optional[str]
     server_name: Optional[str]
     url: Optional[str]
     timeout: Optional[int]
@@ -310,6 +311,7 @@ class Endpoint(SettingsDataLoader):
             None.
         """
         self.sid = server.sid
+        self.sid_base = server.import_spec.get('from', server.sid)
         self.server_name = server.name
         self.url = server.url
         self.timeout = server.timeout
@@ -753,19 +755,28 @@ class AssistantAISettings(SettingsDataLoader):
         """
         to_filter = set()
         valid_eps = [ep.lower() for ep in prompt.required_endpoints]
-        for e in self.endpoints:
+        # to the valid endpoints, we need to add the endpoints of the imported servers
+        if valid_eps:
+            for eid in self.endpoints:
+                sid = self.endpoints[eid].sid
+                sid_base = self.endpoints[eid].sid_base
+                if sid and sid_base and sid != sid_base:
+                    new_eip = eid.replace(f"{sid_base}/", f"{sid}/")
+                    valid_eps.append(new_eip)
+        for eid in self.endpoints:
             # if prompt requires endpoints, filter all other endpoints
-            if valid_eps and e.lower() not in valid_eps:
-                to_filter.add(e)
+            # TODO: understand required endpoints as server/endpoints/xxx where server could be *
+            if valid_eps and eid.lower() not in valid_eps:
+                to_filter.add(eid)
             # filter any endpoint for which valid_params doesn't contains any provided param by the prompt
             for p in prompt.params:
-                if p not in self.endpoints[e].valid_params:
-                    to_filter.add(e)
+                if p not in self.endpoints[eid].valid_params:
+                    to_filter.add(eid)
                     break
             # filter any endpoint for which any required vars is not provided by prompt
             # TODO: filter also endpoint for which don't accept any var provided by prompt?
-            for rv in self.endpoints[e].required_vars:
+            for rv in self.endpoints[eid].required_vars:
                 if rv not in prompt.variables:
-                    to_filter.add(e)
+                    to_filter.add(eid)
                     break
         return {k: v for k, v in self.endpoints.items() if k not in to_filter}
