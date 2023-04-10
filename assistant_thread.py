@@ -1,6 +1,8 @@
+import os
 import json
 import threading
 import sublime
+import ssl
 import http.client
 from typing import Optional, Dict, List, Any, Union
 from urllib.parse import urlparse, urlencode
@@ -124,8 +126,17 @@ class AssistantThread(threading.Thread):
         if not url.port:
             port = 443 if scheme == 'https' else 80
         if scheme == 'https':
-            # TODO: we should allow connect to servers with custom CA certificates and using client certificates
-            return http.client.HTTPSConnection(hostname, port=port)
+            context = ssl.create_default_context(purpose=ssl.Purpose.CLIENT_AUTH)
+            if isinstance(self.endpoint.credentials, dict):
+                verify = self.endpoint.credentials.get('verify')
+                cert = self.endpoint.credentials.get('cert')
+                if verify:
+                    verify = str(os.path.expanduser(verify))
+                    context.load_verify_locations(cafile=verify)
+                    if cert:
+                        cert = str(os.path.expanduser(cert))
+                        context.load_cert_chain(cert)
+            return http.client.HTTPSConnection(hostname, port=port, context=context)
         return http.client.HTTPConnection(hostname, port=port)
 
     def run(self) -> None:
@@ -136,9 +147,14 @@ class AssistantThread(threading.Thread):
         Parameters:
         self: An instance of the class.
         """
-        self.running = True
-        self.result = self.get_response()
-        self.running = False
+        try:
+            self.running = True
+            self.result = self.get_response()
+            self.running = False
+        except Exception as e:
+            self.result = {'error': e}
+            print(f"AssistantAI: Error while processing prompt: {e}")
+            self.running = False
 
     def get_response(self) -> Dict[str, Any]:
         """
@@ -157,15 +173,4 @@ class AssistantThread(threading.Thread):
         headers = self.endpoint.headers if self.endpoint.headers else {}
         self.conn.request(method, resource, data, headers)
         response = self.conn.getresponse()
-        return self.parse_response(json.loads(response.read().decode()))
-
-    def parse_response(self, data: dict) -> Dict[str, Any]:
-        """This method receives a dictionary as input and passes it to the endpoint object to parse the response.
-
-        :param data: A dictionary containing the response data.
-        :type data: dict
-        :return: A dictionary representing the parsed response.
-        :rtype: dict
-        """
-        response = self.endpoint.parse_response(data)
-        return response
+        return self.endpoint.parse_response(json.loads(response.read().decode()))
