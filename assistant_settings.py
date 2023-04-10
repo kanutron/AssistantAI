@@ -690,13 +690,7 @@ class AssistantAISettings(SettingsDataLoader):
         prompts = {}
         for prompt in prompts_list:
             prompt = Prompt(prompt)
-            if not prompt.required_endpoints:
-                prompts[prompt.pid] = prompt
-                continue
-            for ep in prompt.required_endpoints:
-                if ep in self.endpoints:
-                    prompts[prompt.pid] = prompt
-                    break
+            prompts[prompt.pid] = prompt
         return prompts
 
     # TODO: typing for available context
