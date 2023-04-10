@@ -40,7 +40,7 @@
 								"args":
 								{
 									"base_file": "${packages}/AssistantAI/assistant_ai_openai.sublime-settings",
-									"default": "{\n\t$0\n}\n"
+									"default": "// Add your 'credentials', 'prompts' and 'servers' here\n// WARNING: don't overwrite 'default_servers' or 'default_prompts' unless you know it's implications\n{\n\t\"credentials\": {\n\t\t// \"server_id\": {\n\t\t// \t\"credential_id\": \"...\"\n\t\t// }\n\t},\n\t// imported or created prompts specifications\n\t\"prompts\": [],\n\t// imported or created server specifications\n\t\"severs\": []\n}\n"
 								}
 							},
 							{
@@ -49,7 +49,7 @@
 								"args":
 								{
 									"base_file": "${packages}/AssistantAI/assistant_ai_gitea.sublime-settings",
-									"default": "{\n\t$0\n}\n"
+									"default": "// Add your 'credentials', 'prompts' and 'servers' here\n// WARNING: don't overwrite 'default_servers' or 'default_prompts' unless you know it's implications\n{\n\t\"credentials\": {\n\t\t// \"server_id\": {\n\t\t// \t\"credential_id\": \"...\"\n\t\t// }\n\t},\n\t// imported or created prompts specifications\n\t\"prompts\": [],\n\t// imported or created server specifications\n\t\"severs\": []\n}\n"
 								}
 							},
 							{
@@ -62,7 +62,7 @@
 								"args":
 								{
 									"base_file": "${packages}/AssistantAI/assistant_ai_python.sublime-settings",
-									"default": "{\n\t$0\n}\n"
+									"default": "// Add your 'prompts' here\n// WARNING: don't overwrite 'default_prompts' unless you know it's implications\n{\n\t// imported or created prompts specifications\n\t\"prompts\": [\n\t\t// create a new prompt by importing a defined one\n\t]\n}\n"
 								}
 							}
 						]
