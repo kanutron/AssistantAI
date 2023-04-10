@@ -388,7 +388,7 @@ When a prompt requires `text` input, and no selection is made, that prompt will 
 
 ```js
 {
- s"id": "continue_selected_text",
+  "id": "continue_selected_text",
   "name": "Continue selected text",
   "description": "Given a selected text, continue writing from there.",
   "required_inputs": ["text"],
