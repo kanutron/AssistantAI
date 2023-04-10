@@ -1,6 +1,38 @@
+// Place your settings in the file "Packages/User/assistant_ai_python.sublime-settings",
+// which overrides the settings in here. When opening this by Sublime Settings AssitantAI menu,
+// your custom settings are in the right pane.
+
+// This file specifies only prompts, and all them are restricted to Syntax = Python.
+// The prompts here defined provides only one var (text) which makes them usable only when
+// there are endpoints suitable for it (i.e.: are enabled, and requires only 'text' variable).
+// One example endpoint could be OpenAI server for ChatGPT completions.
 {
 	// add your custom prompts here
-	"prompts": [],
+	"prompts": [
+		// The following is a funny example of what you can do with your own prompts.
+		// Copy this prompt in your user's settings file, un-comment it, and test it!
+		// Note how this prompt imports from 'python_add_comments' but replaces some specifications.
+
+		// {
+		// 	// Importing from another prompt
+		// 	"import": "python_add_comments",
+		// 	// Replacing name, icon and description
+		// 	"name": "Add funny comments",
+		// 	"icon": "🤣",
+		// 	"description": "Add funny comments to selected ${syntax} code.",
+		// 	// The generated text now adds an instruction to get funny
+		// 	"vars": {
+		// 		"text": [
+		// 			"Comment the lines to the following ${syntax} code following theses rules:",
+		// 			"* Return only the edited ${syntax} code.",
+		// 			"* Do not alter the code.",
+		// 			"* All comments must be written in a funny style.",
+		// 			"",
+		// 			"${text}",
+		// 		],
+		// 	},
+		// },
+	],
 
 	// prompts provided by this package
 	"default_prompts": [
