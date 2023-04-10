@@ -779,7 +779,6 @@ class AssistantAISettings(SettingsDataLoader):
                     valid_eps.append(new_eip)
         for eid in self.endpoints:
             # if prompt requires endpoints, filter all other endpoints
-            # TODO: understand required endpoints as server/endpoints/xxx where server could be *
             if valid_eps and eid.lower() not in valid_eps:
                 to_filter.add(eid)
             # filter any endpoint for which valid_params doesn't contains any provided param by the prompt
@@ -788,9 +787,13 @@ class AssistantAISettings(SettingsDataLoader):
                     to_filter.add(eid)
                     break
             # filter any endpoint for which any required vars is not provided by prompt
-            # TODO: filter also endpoint for which don't accept any var provided by prompt?
             for rv in self.endpoints[eid].required_vars:
                 if rv not in prompt.variables:
+                    to_filter.add(eid)
+                    break
+            # filter also endpoints that don't accept _all_ vars provided by prompt
+            for pv in prompt.variables:
+                if pv not in self.endpoints[eid].required_vars:
                     to_filter.add(eid)
                     break
         return {k: v for k, v in self.endpoints.items() if k not in to_filter}
