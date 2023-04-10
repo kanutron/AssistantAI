@@ -171,7 +171,6 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
         Returns:
         A dictionary of context settings.
         """
-        # TODO: rowcol for selection.begin and selection.end to be inlcuded
         if 'syntax' not in kwargs:
             syntax = self.view.syntax()
             kwargs['syntax'] = syntax.name if syntax else ''
@@ -199,11 +198,11 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
         if 'region_line_start' not in kwargs:
             rowcol_start = self.view.rowcol(region.begin())
             rowcol_end = self.view.rowcol(region.end())
-            kwargs['region_line_start'] = str(rowcol_start[0])
-            kwargs['region_col_start'] = str(rowcol_start[1])
-            kwargs['region_line_end'] = str(rowcol_end[0])
-            kwargs['region_col_end'] = str(rowcol_end[1])
-            kwargs['region_lines'] = f"L{rowcol_start[0]}-L{rowcol_end[0]}"
+            kwargs['region_line_start'] = str(rowcol_start[0] + 1)
+            kwargs['region_col_start'] = str(rowcol_start[1] + 1)
+            kwargs['region_line_end'] = str(rowcol_end[0] + 1)
+            kwargs['region_col_end'] = str(rowcol_end[1] + 1)
+            kwargs['region_lines'] = f"L{rowcol_start[0] + 1}-L{rowcol_end[0] + 1}"
         return kwargs
 
     def get_full_region(self) -> sublime.Region:
