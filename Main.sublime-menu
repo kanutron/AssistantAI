@@ -40,11 +40,11 @@
 								"args":
 								{
 									"base_file": "${packages}/AssistantAI/assistant_ai_openai.sublime-settings",
-									"default": "{\n\t\"credentials\": {\n\t\t\"api_key\": null  // you should add your API key obtained from https://platform.openai.com/account/api-keys\n\t},\n}\n"
+									"default": "{\n\t$0\n}\n"
 								}
 							},
 							{
-								"caption": "Gitea Server Settings (WIP)",
+								"caption": "Gitea Server Settings",
 								"command": "edit_settings",
 								"args":
 								{
