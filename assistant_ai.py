@@ -11,7 +11,7 @@ from .assistant_thread import AssistantThread
 # The global scope ensures that the settings can
 # be easily accessed from within all the classes.
 settings = AssistantAISettings()
-VERSION_ASSISTANT_AI = "1.0.2"
+VERSION_ASSISTANT_AI = "1.1.0"
 VERSION_ST = int(sublime.version())
 
 def plugin_loaded():
