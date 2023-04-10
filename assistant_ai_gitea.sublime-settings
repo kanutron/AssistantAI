@@ -9,9 +9,115 @@
 	"servers": [],
 
 	// prompts provided by this package
-	"default_prompts": [],
+	"default_prompts": [
+		{
+			"id": "gitea_get_repo",
+			"name": "Get data from a repo",
+			"visible": false,
+			"description": "Get data from a repo filtering by a search query.",
+			"required_inputs": ["search_repo"],
+			"required_endpoints": ["gitea/repos_search"],
+			"command": "append",
+		},
+		{
+			"id": "gitea_post_issue",
+			"name": "New issue from selected ${syntax} code",
+			"icon": "𐍁",
+			"description": "Creates a new Gitea issue referencing the selected code.",
+			"inputs": {
+				"repo": {
+					"type": "list_from_prompt",
+					"prompt_id": "gitea_get_repo",
+					"prompt_args": {
+						"search_repo": " ", // blank space returns full list, no ask user
+					}
+				}
+			},
+			"vars": {
+				"repo": "${repo}",
+				"title": "${title}",
+				"body": [
+					"${body}",
+					"",
+					"Code from: [${file_name}#${region_lines}](src/${file_relpath}#${region_lines}):",
+					"",
+					"```${syntax}",
+					"${text}",
+					"```",
+					"",
+					"> This issue was created from [Sublime Text](https://www.sublimetext.com/), using it's [AssistantAI](https://github.com/kanutron/AssistantAI) plugin.",
+				]
+			},
+			"required_inputs": ["repo", "text", "title", "body"],
+			"required_endpoints": ["gitea/issue_post"],
+			"command": {
+				"cmd": "prepend",
+			},
+		},
+	],
 
 	// servers provided by this package
-	// TODO: this server API is pending to be defined. WIP
-	"default_servers": [],
+	"default_servers": [
+		{
+			"id": "gitea",
+			"name": "Gitea",
+			"url": "http://localhost:3000",
+			"timeout": 60,
+			"required_credentials": ["token"],
+			"headers": {
+				"Authorization": "token ${token}",
+				"Content-Type": "application/json",
+			},
+			"endpoints": {
+				"repos_search": {
+					"name": "Repos Search",
+					"icon": "𐍁",
+					"method": "GET",
+					"resource": "/api/v1/repos/search",
+					"required_vars": ["search_repo"],
+					"query": {
+						"q": "${search_repo}"
+					},
+					"response": {
+						"output": "${full_name}\n${description}",
+						"paths": {
+							"error": "message",
+							"text": "data/0/full_name",
+							"list": "data/*",
+							"vars": "data/0",
+						},
+						"templates": {
+							"list_item": [
+								"${full_name}",
+								"${description}"
+							]
+						},
+					},
+				},
+				"issue_post": {
+					"name": "Post Issue",
+					"icon": "𐍁",
+					"method": "POST",
+					"resource": "/api/v1/repos/${repo}/issues",
+					"required_vars": ["repo", "title", "body"],
+					"valid_params": {
+						"title": "string",
+						"body": "string",
+					},
+					"request": {
+						"title": "${title}",
+						"body": "${body}",
+					},
+					"response": {
+						"output": "# ISSUE #${number}: ${title} (${html_url})",
+						"paths": {
+							"error": "message",
+							"text": "html_url",
+							"vars": ".",
+						},
+					},
+				},
+			}
+		},
+	],
 }
