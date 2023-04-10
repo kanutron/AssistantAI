@@ -1,17 +1,59 @@
+// Place your settings in the file "Packages/User/assistant_ai_openai.sublime-settings",
+// which overrides the settings in here. When opening this by Sublime Settings AssitantAI menu,
+// your custom settings are in the right pane.
+//
+// In your custom settings, you must provide at least the 'credentials'. But you can also define
+// custom 'prompts' and 'servers'.
+//
+// What you should not overwrite are 'default_prompts' nor 'default_servers' unless you really know
+// the implications.
+//
+// This file specifies:
+// * 'Completion' endpoint for OpenAI API. It's intended to continue editing the text you selected.
+// * 'Edits' endpoint for OpenAI API. It's intended to edit the text you selected, after providing an instruction.
+// * 'Chat Completions' endpoint for OpenAI API. Like 'Completions' but with the power of ChatGPT AI models
 {
-	// add your credentials in user settings of this package
+	// Add your credentials in user settings file, following this structure:
 	"credentials": {
-		// you should add your API key obtained from https://platform.openai.com/account/api-keys
-		"api_key": null
+		// Each server (default or custom) must have a unique 'id'.
+		// For each server id, you must specify the required credentials.
+		"openai": {
+			// Create your OpenAI API key from:
+			// https://platform.openai.com/account/api-keys
+
+			// "api_key": "sk-XXX..."
+		},
+		// For the example below of a custom server, then:
+		// "openai_local": {
+		// 		"api_key": "sk-XXX..."
+		// }
 	},
 
 	// add your custom prompts
 	"prompts": [],
 
 	// add your custom servers
-	"servers": [],
+	"servers": [
+		// You can also define your own OpenAI servers by importing the provided in 'default_servers' key below.
+		// Here is an example of a localhost server (i.e.: a reverse proxy) that includes all definitions of the default one.
+		// See the 'import' key, that makes a copy of the default (identified by its 'id') and overwrites the defined keys.
+		//
+		// {
+		// 	"id": "openai_local",              // choose a unique id for your custom server
+		// 	"import": "openai",                // import from the already defined server
+		// 	"name": "OpenAI Local",            // overwrite the imported name
+		// 	"url": "https://localhost:443",    // overwrite the url, where a reverse proxy can be setup by the user
+		// },
+	],
 
-	// prompts provided by this package (OpenAI)
+	// Default prompts and servers ---------------------------------------------
+
+	// WARNING
+	// You don't need to edit/overwrite the following specifications.
+	// Instead, you can use their id's to import those in your settings and effortlessly create new ones.
+	// This plugin may provide updates to these definitions and if you overwrite them, you may miss new features.
+
+	// prompts provided by this package (OpenAI basic prompts)
 	"default_prompts": [
 		{
 			"id": "continue_selected_text",
@@ -60,7 +102,7 @@
 			},
 			"params": {
 				"temperature": 1.0,
-				"max_tokens": 1800,
+				"max_tokens": 2048,
 			},
 			"command": "replace",
 		},
@@ -109,8 +151,11 @@
 						"prompt": "${text}",
 					},
 					"response": {
-						"error": "error",
-						"output": "choices/0/text",
+						"output": "${text}",
+						"paths": {
+							"error": "error",
+							"text": "choices/0/text",
+						},
 					},
 				},
 				"chat_completions": {
@@ -143,8 +188,11 @@
 						],
 					},
 					"response": {
-						"error": "error",
-						"output": "choices/0/message/content",
+						"output": "${text}",
+						"paths": {
+							"error": "error",
+							"text": "choices/0/message/content",
+						},
 					},
 				},
 				"edits": {
@@ -167,8 +215,11 @@
 						"instruction": "${instruction}",
 					},
 					"response": {
-						"error": "error",
-						"output": "choices/0/text",
+						"output": "${text}",
+						"paths": {
+							"error": "error",
+							"text": "choices/0/text",
+						},
 					},
 				},
 			}
