@@ -652,8 +652,6 @@ class AssistantAISettings(SettingsDataLoader):
             # process server headers
             if sid not in to_dismiss:
                 servers[sid].set_credentials(srv_creds)
-            else:
-                print(f"AssistantAI: Server '{sid}' dismissed due to missing required credentials.")
         return {sid:srv for sid,srv in servers.items() if sid not in to_dismiss}
 
     def load_endpoints_from(self, servers: Dict[str, Server]) -> Dict[str, Endpoint]:
