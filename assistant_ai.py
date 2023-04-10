@@ -220,10 +220,12 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
 class AssistantAiAsyncCommand(AssistantAiTextCommand):
     global settings
 
-    def handle_thread(self, thread: AssistantThread, seconds: int=0) -> None:
+    def handle_thread(self, thread: AssistantThread, elapsed: int=0) -> None:
         """
         Recursive method for checking in on the async API fetcher
         """
+        frequency_ms = 250
+        seconds = int(elapsed / 1000)
         timeout = thread.timeout
         icon_warn = "⚠️"
         icon_progress_steps = "▁▂▃▄▅▆▇▉▇▆▅▄▃▂"  # Alternate progress icons: ▊▋▌▍▎▏▎▍▌▋▊▉
@@ -240,7 +242,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             msg = f"AssistantAI is working {progress} Timout in {timeout-seconds}s"
             sublime.status_message(msg)
             # Wait a second, then check on it again
-            self.run_in(self.handle_thread, delay=1000, thread=thread, seconds=seconds + 1)
+            self.run_in(self.handle_thread, delay=frequency_ms, thread=thread, elapsed=elapsed+frequency_ms)
             return
         # If we finished with no result, something is wrong
         if not thread.result:
