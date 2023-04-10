@@ -1,12 +1,55 @@
+// Place your settings in the file "Packages/User/assistant_ai_gitea.sublime-settings",
+// which overrides the settings in here. When opening this by Sublime Settings AssitantAI menu,
+// your custom settings are in the right pane.
+//
+// In your custom settings, you must provide at least the 'credentials'. But you can also define
+// custom 'prompts' and 'servers'.
+//
+// What you should not overwrite are 'default_prompts' nor 'default_servers' unless you really know
+// the implications.
+//
+// This file specifies the 'Create Issue' endpoint for Gitea API. It's intended to quickly create issues
+// in Gitea, with the selected code being reproduced in the issue body.
 {
 	// credentials
-	"credentials": {},
+	"credentials": {
+		// Each server (default or custom) must have a unique 'id'.
+		// For each server id, you must specify the required credentials.
+		"gitea": {
+			// Create your Gitea API key from:
+			// https://GITEA_SERVER_URL/user/settings/applications
+
+			// "token": "..."
+		},
+		// For the example below of a custom server, then:
+		// "gitea_personal": {
+		// 		"api_key": "sk-XXX..."
+		// }
+	},
 
 	// add your custom prompts here
 	"prompts": [],
 
 	// add your custom servers here
-	"servers": [],
+	"servers": [
+		// You can also define your own Gitea servers by importing the provided in 'default_servers' key below.
+		// Here is an example of a personal instance of a Gitea server that includes all definitions of the default one.
+		// See the 'import' key, that makes a copy of the default (identified by its 'id') and overwrites the defined keys.
+		//
+		// {
+		// 	"id": "gitea_personal",                   // choose a unique id for your custom server
+		// 	"import": "gitea",                        // import from the already defined server
+		// 	"name": "Gitea Personal",                 // overwrite the imported name
+		// 	"url": "https://YOUR_GITEA_SERVER:443",   // overwrite the url with your personal Gitea instance
+		// },
+	],
+
+	// Default prompts and servers ---------------------------------------------
+
+	// WARNING
+	// You don't need to edit/overwrite the following specifications.
+	// Instead, you can use their id's to import those in your settings and effortlessly create new ones.
+	// This plugin may provide updates to these definitions and if you overwrite them, you may miss new features.
 
 	// prompts provided by this package
 	"default_prompts": [
