@@ -134,21 +134,21 @@ Please note that OpenAI is a paid service, and you will need to have an API key 
 
 Once you have your API key, go to `Settings` > `Package Settings` > `AssistantAI` > `OpenAI Server Settings` and add the credential:
 
-```json
+```js
 {
-	"credentials": {
-		// you must specify the Server ID ('openai' in this case) which this credential is for 
-		"openai": {
-			// OpenAI requires only one credential named 'api_key'
-			"api_key": "sk-..."
+  "credentials": {
+    // you must specify the Server ID ('openai' in this case) which this credential is for 
+    "openai": {
+      // OpenAI requires only one credential named 'api_key'
+      "api_key": "sk-..."
 
-			// Other servers may require more tokens, identification, etc.
+      // Other servers may require more tokens, identification, etc.
 
-			// For custom TLS: you can specify `verify` for a custom CA and `cert` for a Client Cert
-			// "verify": "~/.tls/my_ca.pem"
-			// "cert": "~/.tls/my_cert.pem" // must include unencrypted key 
-		}
-	}
+      // For custom TLS: you can specify `verify` for a custom CA and `cert` for a Client Cert
+      // "verify": "~/.tls/my_ca.pem"
+      // "cert": "~/.tls/my_cert.pem" // must include unencrypted key 
+    }
+  }
 }
 ```
 
@@ -163,37 +163,37 @@ This Server definition includes two endpoints:
 
 Since you may have access to several Gitea instances (i.e.: your personal, and the one in your workplace), you can define your custom `servers` by importing the default one:
 
-```json
-	"servers": [
-		{
-			"id": "gitea_personal",
-			"import": "gitea", // this is provided in 'default_servers'
-			"name": "Gitea Kanutron",
-			"url": "https://CUSTOM_URL:443", // the default points to https://localhost:3000
-		},
-		{
-			"id": "gitea_work",
-			"import": "gitea",
-			"name": "Gitea Work",
-			"url": "https://CUSTOM_URL:443",
-		},
-	],
+```js
+  "servers": [
+    {
+      "id": "gitea_personal",
+      "import": "gitea", // this is provided in 'default_servers'
+      "name": "Gitea Kanutron",
+      "url": "https://CUSTOM_URL:443", // the default points to https://localhost:3000
+    },
+    {
+      "id": "gitea_work",
+      "import": "gitea",
+      "name": "Gitea Work",
+      "url": "https://CUSTOM_URL:443",
+    },
+  ],
 ```
 
 And provide credentials for each of them as identified by it's `id`:
 
-```json
+```js
 {
-	"credentials": {
-		"gitea_personal": {
-			"token": "...",
-		},
-		"gitea_work": {
-			"token": "...",
-			"verify": "~/.gitea/secrets/rootca.pem",
-			"cert": "~/.gitea/secrets/user.pem",
-		},
-	}
+  "credentials": {
+    "gitea_personal": {
+      "token": "...",
+    },
+    "gitea_work": {
+      "token": "...",
+      "verify": "~/.gitea/secrets/rootca.pem",
+      "cert": "~/.gitea/secrets/user.pem",
+    },
+  }
 }
 ```
 
@@ -235,30 +235,30 @@ Those prompts requires at least one server that accepts `text` as input. If you 
 
 There is an example prompt in the settings files that is commented. It's an example of what you can achieve by fine-tuning the prompts.
 
-```json
+```js
 {
-	// imported or created prompts specifications
-	"prompts": [
-		{
-			// Importing from another prompt
-			"import": "python_add_comments",
-			// Replacing name, icon and description
-			"name": "Add funny comments",
-			"icon": "🤣",
-			"description": "Add funny comments to selected ${syntax} code.",
-			// The generated text now adds an instruction to get funny
-			"vars": {
-				"text": [
-					"Comment the lines to the following ${syntax} code following theses rules:",
-					"* Return only the edited ${syntax} code.",
-					"* Do not alter the code.",
-					"* All comments must be written in a funny style, addressed to my future me.",
-					"",
-					"${text}",
-				],
-			},
-		},
-	]
+  // imported or created prompts specifications
+  "prompts": [
+    {
+      // Importing from another prompt
+      "import": "python_add_comments",
+      // Replacing name, icon and description
+      "name": "Add funny comments",
+      "icon": "🤣",
+      "description": "Add funny comments to selected ${syntax} code.",
+      // The generated text now adds an instruction to get funny
+      "vars": {
+        "text": [
+          "Comment the lines to the following ${syntax} code following theses rules:",
+          "* Return only the edited ${syntax} code.",
+          "* Do not alter the code.",
+          "* All comments must be written in a funny style, addressed to my future me.",
+          "",
+          "${text}",
+        ],
+      },
+    },
+  ]
 }
 ```
 
@@ -291,19 +291,19 @@ This plugin uses 3 types of specifications.
 
 A server is a JSON specification that includes the URL, the needed headers and required credentials keys, and a set of endpoints.
 
-```json
+```js
 {
-	"id": "openai",
-	"name": "OpenAI",
-	"url": "https://api.openai.com:443",
-	"timeout": 60,
-	"required_credentials": ["api_key"],
-	"headers": {
-		"Authorization": "Bearer ${api_key}",
-		"Content-Type": "application/json",
-		"cache-control": "no-cache",
-	},
-	"endpoints": { ... }
+  "id": "openai",
+  "name": "OpenAI",
+  "url": "https://api.openai.com:443",
+  "timeout": 60,
+  "required_credentials": ["api_key"],
+  "headers": {
+    "Authorization": "Bearer ${api_key}",
+    "Content-Type": "application/json",
+    "cache-control": "no-cache",
+  },
+  "endpoints": { ... }
 },
 ```
 
@@ -324,33 +324,33 @@ Each server may provide one or more endpoints.
 - `error`: for the key where any error will be retrieved
 - `output`: the path (forward slashes `/` as a separator) where to retrieve the text
 
-```json
+```js
 {
-	"chat_completions": {
-		"name": "Chat Completions",
-		"method": "POST",
-		"resource": "/v1/chat/completions",
-		"required_vars": ["text"],
-		"valid_params": {
-			"model": "string",
-			"messages": "string",
-			...
-			"user": "string",
-		},
-		"request": {
-			"model": "gpt-3.5-turbo",
-			"messages": [
-				{
-					"role": "user",
-					"content": "${text}",
-				}
-			],
-		},
-		"response": {
-			"error": "error",
-			"output": "choices/0/message/content",
-		},
-	}
+  "chat_completions": {
+    "name": "Chat Completions",
+    "method": "POST",
+    "resource": "/v1/chat/completions",
+    "required_vars": ["text"],
+    "valid_params": {
+      "model": "string",
+      "messages": "string",
+      ...
+      "user": "string",
+    },
+    "request": {
+      "model": "gpt-3.5-turbo",
+      "messages": [
+        {
+          "role": "user",
+          "content": "${text}",
+        }
+      ],
+    },
+    "response": {
+      "error": "error",
+      "output": "choices/0/message/content",
+    },
+  }
 }
 ```
 
@@ -360,13 +360,13 @@ They are key-value pairs used by server endpoints. Configured on each plugin set
 
 If you install **AssistantAI** and intent to use OpenAI API, you will have to setup this:
 
-```json
+```js
 {
-	"credentials": {
-		"server_id": {
-			"api_key": "sk-..."
-		}
-	},
+  "credentials": {
+    "server_id": {
+      "api_key": "sk-..."
+    }
+  },
 }
 ```
 
@@ -386,21 +386,21 @@ Similarly if a prompt declares is valid for `python` syntax, will be shown only 
 
 When a prompt requires `text` input, and no selection is made, that prompt will not be shown.
 
-```json
+```js
 {
-	"id": "continue_selected_text",
-	"name": "Continue selected text",
-	"description": "Given a selected text, continue writing from there.",
-	"required_inputs": ["text"],
-	"required_endpoints": [
-		"openai/completions",
-		"openai/chat_completions"
-	],
-	"params": {
-		"temperature": 1.0,
-		"max_tokens": 1800,
-	},
-	"command": "append",
+ s"id": "continue_selected_text",
+  "name": "Continue selected text",
+  "description": "Given a selected text, continue writing from there.",
+  "required_inputs": ["text"],
+  "required_endpoints": [
+    "openai/completions",
+    "openai/chat_completions"
+  ],
+  "params": {
+    "temperature": 1.0,
+    "max_tokens": 1800,
+  },
+  "command": "append",
 }
 ```
 
