@@ -90,7 +90,7 @@ class AssistantThread(threading.Thread):
         for k, v in request.items():
             if k not in self.endpoint.valid_params:
                 to_filter.add(k)
-                print(f"AssistantAI: WARNING: '{self.prompt.pid}' provides a param '{k}' not accepted by '{self.endpoint.eid}'.")
+                print(f"AssistantAI: WARNING: prompt '{self.prompt.pid}' provides a param '{k}' not accepted by endpoint '{self.endpoint.eid}'.")
             # TODO: check valid_params specified type.
         return {k:v for k,v in request.items() if k not in to_filter}
 
