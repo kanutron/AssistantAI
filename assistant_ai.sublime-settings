@@ -1,16 +1,32 @@
+// Place your settings in the file "Packages/User/assistant_ai.sublime-settings",
+// which overrides the settings in here. When opening this by Sublime Settings AssitantAI menu,
+// your custom settings are in the right pane.
+//
+// AssisntatAI comes bundled with some other specifications for:
+// * OpenAI: server and endpoints specifications to interact with ChatGPT
+// * Gitea: server and endpoints specifications to interact with Gitea
+// * Python: dedicated prompts to interact with APIs when editing Python
+//
+// See the settings menu Sublime > Settings > Package Settings > AssistantAI
+//
+// You will unlikely need to edit this file or the user's version unless creating new server specifications.
+// If you do, please share your new server specifications in:
+// https://github.com/kanutron/AssistantAI/issues/new
 {
-	// credentials
+	// credentials: you will add server credentials in this section, of each settings file
 	"credentials": {},
 
-	// add your custom prompts
+	// prompts: you will add/import your custom prompts in this section, of each settings file
 	"prompts": [],
 
-	// add your custom servers
+	// servers: add/import your custom servers in this section, of each settings file
 	"servers": [],
 
-	// prompts provided by this package (none)
+	// prompts provided by this file (none)
+	// you should never overwrite 'default_prompts'
 	"default_prompts": [],
 
-	// servers provided by this package (none)
+	// servers provided by this file (none)
+	// you should never overwrite 'default_servers'
 	"default_servers": []
 }
