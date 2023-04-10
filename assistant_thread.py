@@ -169,29 +169,3 @@ class AssistantThread(threading.Thread):
         """
         response = self.endpoint.parse_response(data)
         return response
-
-    def get_item(self, data: Optional[dict], path: str) -> Optional[Any]:
-        """Returns the value located at the end of a given path within a nested data structure.
-
-        Args:
-            data (list/dict/tuple): The nested data structure to search for the value.
-            path (str): The path to the desired value within the data structure, separated by forward slashes.
-
-        Returns:
-            The value located at the end of the path within the data structure, or None if not found.
-        """
-        if not path:
-            return data
-        parts = path.split('/')
-        if len(parts) == 0:
-            return data
-        if not isinstance(data, (list, dict, tuple)):
-            return data
-        part = parts.pop(0)
-        if part.isnumeric() and isinstance(data, (list, tuple)):
-            part = int(part)
-            if len(data) > part:
-                return self.get_item(data[part], '/'.join(parts))
-        elif isinstance(data, dict):
-            return self.get_item(data.get(part), '/'.join(parts))
-        return None
