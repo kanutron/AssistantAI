@@ -179,6 +179,8 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
             win = self.view.window()
             if win:
                 kwargs.update(win.extract_variables())
+        if 'folder' in kwargs:
+            kwargs['file_relpath'] = kwargs.get('file', '').replace(kwargs.get('folder', ''), '')
         if 'file_size' not in kwargs:
             kwargs['file_size'] = str(self.view.size())
         if 'file_encoding' not in kwargs:
@@ -193,6 +195,15 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
             syms = [s for _, s in self.view.symbols()]
             if syms:
                 kwargs['file_toc'] = '\n'.join(syms)
+        region = self.get_full_region()
+        if 'region_line_start' not in kwargs:
+            rowcol_start = self.view.rowcol(region.begin())
+            rowcol_end = self.view.rowcol(region.end())
+            kwargs['region_line_start'] = str(rowcol_start[0])
+            kwargs['region_col_start'] = str(rowcol_start[1])
+            kwargs['region_line_end'] = str(rowcol_end[0])
+            kwargs['region_col_end'] = str(rowcol_end[1])
+            kwargs['region_lines'] = f"L{rowcol_start[0]}-L{rowcol_end[0]}"
         return kwargs
 
     def get_full_region(self) -> sublime.Region:
