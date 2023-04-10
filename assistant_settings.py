@@ -333,6 +333,8 @@ class Endpoint(SettingsDataLoader):
         for key, path in paths.items():
             if '*' in path:
                 response[key] = qdata.values(path)
+            elif path == '.':
+                response[key] = data
             else:
                 response[key] = qdata.get(path)
         # collect all vars from the object retreived with path 'vars'
