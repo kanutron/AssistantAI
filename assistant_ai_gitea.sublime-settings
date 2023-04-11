@@ -119,7 +119,10 @@
 					"resource": "/api/v1/repos/search",
 					"required_vars": ["search_repo"],
 					"query": {
-						"q": "${search_repo}"
+						"q": "${search_repo}",
+						"archived": "non-archived",
+						"sort": "updated",
+						"order": "desc",
 					},
 					"response": {
 						"output": "${full_name}\n${description}",
