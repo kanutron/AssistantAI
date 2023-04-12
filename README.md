@@ -1,6 +1,6 @@
 # AssistantAI
 
-A Sublime Text plugin to interact with HTTP API endpoints and perform text manipulation with their responses. AssistantAI is bundled with OpeanAI to interact with ChatGPT or Codex, Gitea to create Issues directly from the selected code, and Python prompts to automatically add Docstrings and more. The user can extend it's features by defining Server endpoints and custom Prompts in Sublime Settings JSON files.
+A Sublime Text plugin to interact with HTTP API endpoints and perform text manipulation with their responses. AssistantAI is bundled with OpenAI to interact with ChatGPT or Codex, Gitea to create Issues directly from the selected code, and Python prompts to automatically add Docstrings and more. The user can extend it's features by defining Server endpoints and custom Prompts in Sublime Settings JSON files.
 
 <p align="center">
 	<img src="screenshot.gif" alt="AssistantAI in action"></img>
