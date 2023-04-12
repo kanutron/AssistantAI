@@ -228,7 +228,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
         seconds = int(elapsed / 1000)
         timeout = thread.timeout
         icon_warn = "⚠️"
-        icon_progress_steps = "▁▂▃▄▅▆▇▉▇▆▅▄▃▂"  # Alternate progress icons: ▊▋▌▍▎▏▎▍▌▋▊▉
+        icon_progress_steps = "▁▂▃▄▅▆▇▆▅▄▃▂"  # Alternate progress icons: ▊▋▌▍▎▏▎▍▌▋▊▉
         # If we ran out of time, let user know, stop checking on the thread
         if seconds > timeout:
             msg = f"AssistantAI: {icon_warn} Query ran out of time! {timeout}s"
