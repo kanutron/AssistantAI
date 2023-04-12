@@ -26,7 +26,7 @@
 		// 			"Comment the lines to the following ${syntax} code following theses rules:",
 		// 			"* Return only the edited ${syntax} code.",
 		// 			"* Do not alter the code.",
-		// 			"* All comments must be written in a funny style.",
+		// 			"* All comments must be written in a funny style, addressed to my future me.",
 		// 			"",
 		// 			"${text}",
 		// 		],
