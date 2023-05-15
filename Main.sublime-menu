@@ -40,7 +40,7 @@
 								"args":
 								{
 									"base_file": "${packages}/AssistantAI/assistant_ai_openai.sublime-settings",
-									"default": "// Add your 'credentials', 'prompts' and 'servers' here\n// WARNING: don't overwrite 'default_servers' or 'default_prompts' unless you know it's implications\n{\n\t\"credentials\": {\n\t\t// \"server_id\": {\n\t\t// \t\"credential_id\": \"...\"\n\t\t// }\n\t},\n\t// imported or created prompts specifications\n\t\"prompts\": [],\n\t// imported or created server specifications\n\t\"severs\": []\n}\n"
+									"default": "// Add your 'credentials', 'prompts' and 'servers' here\n// WARNING: don't overwrite 'default_servers' or 'default_prompts' unless you know it's implications\n{\n\t\"credentials\": {\n\t\t\"openai\": {\n\t\t \t// \"api_key\": \"sk-...\"\n\t\t}\n\t},\n\t// imported or created prompts specifications\n\t\"prompts\": [],\n\t// imported or created server specifications\n\t\"severs\": []\n}\n"
 								}
 							},
 							{
