@@ -54,15 +54,15 @@ class QDict():
         if key == '*' or key == '**':
             if isinstance(data, dict):
                 for item in data:
-                    p = f"'{item}'[{expr}]" if expr else f"'{item}'"
+                    p = "'{}'[{}]".format(item, expr) if expr else "'{}'".format(item)
                     res.update(self._get(p, data=data, parents=parents, sep=sep))
             elif isinstance(data, (list, set, tuple)):
                 for index, item in enumerate(data):
-                    p = f"'{index}'[{expr}]" if expr else f"'{index}'"
+                    p = "'{}'[{}]".format(index, expr) if expr else "'{}'".format(index)
                     res.update(self._get(p, data=data, parents=parents, sep=sep))
         elif hasattr(data, '__iter__'):
             if key in data:
-                pathkey = f"'{key}'" if key.find(sep) > 0 else key
+                pathkey = "'{}'".format(key) if key.find(sep) > 0 else key
                 thispath = parents + sep + pathkey if parents else pathkey
                 item = data[key]
                 if self._evalItem(path, expr, key, item):
@@ -96,7 +96,7 @@ class QDict():
             self.codecache[expr] = code
         for name in code.co_names:
             if name not in scope:
-                raise NameError(f"Use of '{name}' not allowed in filer expressions, and the key is not found on this item. Evaluating '{expr}'")
+                raise NameError("Use of '{}' not allowed in filer expressions, and the key is not found on this item. Evaluating '{}'".format(name, expr))
         return eval(code, {"__builtins__": {}}, scope)
 
     def _evalItem(self, path, expr, key, item):
@@ -115,9 +115,9 @@ class QDict():
         try:
             return self._evalExpr(expr, scope)
         except NameError as ne:
-            print(f"Error while evaluating expression for '{key}': {expr}. {ne}")
+            print("Error while evaluating expression for '{}': {}. {}".format(key, expr, ne))
         except KeyError as ke:
-            print(f"Error while evaluating expression for '{key}': {expr}. {ke}")
+            print("Error while evaluating expression for '{}': {}. {}".format(key, expr, ke))
         return False
 
     @staticmethod

@@ -61,10 +61,15 @@
 			"icon": "…",
 			"description": "Given a selected text, continue writing from there.",
 			"required_inputs": ["text"],
-			"required_endpoints": [
-				"openai/completions",
-				"openai/chat_completions"
-			],
+			"vars": {
+				"text": [
+					"The following is a portion of ${syntax} code.",
+					"Continue from there.",
+					"Return only the appended text.",
+					"",
+					"${text}",
+				],
+			},
 			"params": {
 				"temperature": 1.0,
 				"max_tokens": 1800,
@@ -72,27 +77,14 @@
 			"command": "append",
 		},
 		{
-			"id": "edit_selected_text",
-			"name": "Edit selected text",
-			"icon": "✎",
-			"description": "Give an instruction to change the selected text.",
-			"required_inputs": ["text", "instruction"],
-			"required_endpoints": ["openai/edits"],
-			"params": {
-				"temperature": 1.0,
-			},
-			"command": "replace",
-		},
-		{
 			"id": "ask_change_code",
 			"name": "Ask for a change to ${syntax} text",
 			"icon": "⇆",
 			"description": "Give an instruction to change the selected ${syntax} text.",
 			"required_inputs": ["text", "instruction"],
-			"required_endpoints": ["openai/chat_completions"],
 			"vars": {
 				"text": [
-					"The following is a portion of ${syntax}.",
+					"The following is a portion of ${syntax} code.",
 					"Make these changes:",
 					"${instruction}.",
 					"Return only the edited ${syntax} text:",
@@ -122,42 +114,6 @@
 				"cache-control": "no-cache",
 			},
 			"endpoints": {
-				"completions": {
-					"name": "Completions",
-					"icon": "᠁",
-					"method": "POST",
-					"resource": "/v1/completions",
-					"required_vars": ["text"],
-					"valid_params": {
-						"model": "string",
-						"prompt": "string",
-						"suffix": "string",
-						"max_tokens": "integer",
-						"temperature": "number",
-						"top_p": "number",
-						"n": "integer",
-						"stream": "boolean",
-						"logprobs": "integer",
-						"echo": "boolean",
-						"stop": "string",
-						"presence_penalty": "number",
-						"frequency_penalty": "number",
-						"best_of": "integer",
-						"logit_bias": "object",
-						"user": "string",
-					},
-					"request": {
-						"model": "text-davinci-001",
-						"prompt": "${text}",
-					},
-					"response": {
-						"output": "${text}",
-						"paths": {
-							"error": "error",
-							"text": "choices/0/text",
-						},
-					},
-				},
 				"chat_completions": {
 					"name": "Chat Completions",
 					"icon": "⇆",
@@ -196,33 +152,6 @@
 						"paths": {
 							"error": "error",
 							"text": "choices/0/message/content",
-						},
-					},
-				},
-				"edits": {
-					"name": "Edits",
-					"icon": "✎",
-					"method": "POST",
-					"resource": "/v1/edits",
-					"required_vars": ["text", "instruction"],
-					"valid_params": {
-						"model": "string",
-						"input": "string",
-						"instruction": "string",
-						"n": "integer",
-						"temperature": "float",
-						"top_p": "number",
-					},
-					"request": {
-						"model": "text-davinci-edit-001",
-						"input": "${text}",
-						"instruction": "${instruction}",
-					},
-					"response": {
-						"output": "${text}",
-						"paths": {
-							"error": "error",
-							"text": "choices/0/text",
 						},
 					},
 				},

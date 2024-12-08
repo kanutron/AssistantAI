@@ -2,8 +2,6 @@ import json
 import functools
 import sublime
 import sublime_plugin
-from dataclasses import asdict
-from typing import Optional, Union, Dict, List, Tuple, Callable
 
 from .assistant_settings import AssistantAISettings, Endpoint, Prompt
 from .assistant_thread import AssistantThread
@@ -41,7 +39,7 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
     - get_text_context(region, prompt): Given a region, return the selected text, and context pre and post such text.
     - get_text_context_size(region): returns a dict with the available context parts sizes.
     """
-    def get_region_indentation(self, region: sublime.Region) -> str:
+    def get_region_indentation(self, region):
         """
         Returns the indentation of a region.
 
@@ -51,15 +49,10 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
         Returns:
         - str: The indentation of the given region.
         """
-        lines = self.view.split_by_newlines(sublime.Region(*region))
+        lines = self.view.split_by_newlines(sublime.Region(region[0], region[1]))
         if not lines:
             return ''
-        text = self.view.substr(sublime.Region(*lines[0]))
-        # row, col = self.view.rowcol(sublime.Region(*lines[0]).begin())
-        # start = self.view.text_point(row, 0)
-        # row, col = self.view.rowcol(sublime.Region(*lines[0]).end())
-        # end = self.view.text_point(row, col)
-        # text = self.view.substr(sublime.Region(start, end))
+        text = self.view.substr(sublime.Region(lines[0].begin(), lines[0].end()))
         indent = ''
         for c in text:
             if c in (' \t'):
@@ -68,7 +61,7 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
                 break
         return indent
 
-    def indent_text(self, text: str, indent: str) -> str:
+    def indent_text(self, text, indent):
         """
         This function takes in a string and an integer and returns a modified string.
         The string is split by the newline character and every line is then indented by
@@ -79,7 +72,7 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
             new += indent + line + "\n"
         return new
 
-    def get_text_context(self, region: sublime.Region, prompt: Prompt) -> Tuple[str, str, str]:
+    def get_text_context(self, region, prompt):
         """
         Returns the text content before and after the region based on the given required context.
 
@@ -128,7 +121,7 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
                 post = self.view.substr(reg_post)
         return text, pre, post
 
-    def get_text_context_size(self, region: sublime.Region) -> Dict[str, int]:
+    def get_text_context_size(self, region):
         """
         Returns the amount of characters and lines in the text surrounding a given region.
 
@@ -144,7 +137,7 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
                 - "text_chars": The number of characters within the region.
                 - "text_lines": The number of lines within the region.
         """
-        region = sublime.Region(*region)
+        region = sublime.Region(region.begin(), region.end())
         pre = sublime.Region(0, region.begin())
         post = sublime.Region(region.end(), self.view.size())
         return {
@@ -156,7 +149,7 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
             "text_lines": len(self.view.lines(region)),
         }
 
-    def context_to_kwargs(self, **kwargs) -> Dict[str, str]:
+    def context_to_kwargs(self, **kwargs):
         """
         Takes in keyword arguments and returns those with all non-included context.
 
@@ -172,8 +165,11 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
         A dictionary of context settings.
         """
         if 'syntax' not in kwargs:
-            syntax = self.view.syntax()
-            kwargs['syntax'] = syntax.name if syntax else ''
+            try:
+                syntax = self.view.syntax()
+                kwargs['syntax'] = syntax.name if syntax else ''
+            except AttributeError as e:
+                kwargs['syntax'] = self.view.scope_name(0).split(' ')[0]
         if 'file' not in kwargs:
             win = self.view.window()
             if win:
@@ -202,10 +198,10 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
             kwargs['region_col_start'] = str(rowcol_start[1] + 1)
             kwargs['region_line_end'] = str(rowcol_end[0] + 1)
             kwargs['region_col_end'] = str(rowcol_end[1] + 1)
-            kwargs['region_lines'] = f"L{rowcol_start[0] + 1}-L{rowcol_end[0] + 1}"
+            kwargs['region_lines'] = "L{}-L{}".format(rowcol_start[0] + 1, rowcol_end[0] + 1)
         return kwargs
 
-    def get_full_region(self) -> sublime.Region:
+    def get_full_region(self):
         """
         Returns a Sublime Region object representing the selected region in the view.
         If several regions are selected, returns the minimum region that covers all selected regions.
@@ -220,7 +216,7 @@ class AssistantAiTextCommand(sublime_plugin.TextCommand):
 class AssistantAiAsyncCommand(AssistantAiTextCommand):
     global settings
 
-    def handle_thread(self, thread: AssistantThread, elapsed: int=0) -> None:
+    def handle_thread(self, thread, elapsed=0):
         """
         Recursive method for checking in on the async API fetcher
         """
@@ -231,7 +227,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
         icon_progress_steps = "▁▂▃▄▅▆▇▆▅▄▃▂"  # Alternate progress icons: ▊▋▌▍▎▏▎▍▌▋▊▉
         # If we ran out of time, let user know, stop checking on the thread
         if seconds > timeout:
-            msg = f"AssistantAI: {icon_warn} Query ran out of time! {timeout}s"
+            msg = "AssistantAI: {} Query ran out of time! {}s".format(icon_warn, timeout)
             sublime.status_message(msg)
             return
         # While the thread is running, show them some feedback,
@@ -239,20 +235,20 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
         if thread.running:
             step = seconds % len(icon_progress_steps)
             progress = icon_progress_steps[step]
-            msg = f"AssistantAI is working {progress} Timout in {timeout-seconds}s"
+            msg = "AssistantAI is working {} Timout in {}s".format(progress, timeout-seconds)
             sublime.status_message(msg)
             # Wait a second, then check on it again
             self.run_in(self.handle_thread, delay=frequency_ms, thread=thread, elapsed=elapsed+frequency_ms)
             return
         # If we finished with no result, something is wrong
         if not thread.result:
-            sublime.status_message(f"AssistantAI: {icon_warn} Something is wrong with remote server - aborting")
+            sublime.status_message("AssistantAI: {} Something is wrong with remote server - aborting".format(icon_warn))
             return
         sublime.status_message("AssistantAI: Done!")
         # Collect the result and act as per command spec
         error = thread.result.get('error')
         if error:
-            sublime.status_message(f"AsistantAI: {icon_warn} {error}")
+            sublime.status_message("AsistantAI: {} {}".format(icon_warn, error))
             return
         # process stacked prompts if anything there
         if thread.stack:
@@ -261,18 +257,20 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
                 # returning from a 'text_from_prompt' call
                 frame[frame['__text_to']] = thread.result.get('output')
                 del(frame['__text_to'])
-                self.view.run_command('assistant_ai_prompt', {'stack': thread.stack, **frame})
+                frame['stack'] = thread.stack
+                self.view.run_command('assistant_ai_prompt', frame)
                 return
             if '__list_to' in frame:
                 # returning from a 'list_from_prompt' call
                 frame[frame['__list_to']] = thread.result.get('list')
                 del(frame['__list_to'])
-                self.view.run_command('assistant_ai_prompt', {'stack': thread.stack, **frame})
+                frame['stack'] = thread.stack
+                self.view.run_command('assistant_ai_prompt', frame)
                 return
         # no stack, just execute the prompt command
         output = thread.result.get('output')
         if not output:
-            sublime.status_message(f"AsistantAI: {icon_warn} No response.")
+            sublime.status_message("AsistantAI: {} No response.".format(icon_warn))
             return
         # Get the command to exectue as per prompt specs, since there is nothin in stack to process
         sublime_command = thread.prompt.get_sublime_command()
@@ -282,17 +280,17 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             "kwargs": thread.prompt.command
         })
 
-    def quick_panel_prompts(self, **kwargs) -> None:
+    def quick_panel_prompts(self, **kwargs):
         """
         Display a quick panel with all available prompts.
 
         :return: None
         """
-        def on_select(index: int):
+        def on_select(index):
             if index < 0:
                 return
-            pid: str = ids[index]
-            self.view.run_command('assistant_ai_prompt', {'pid': pid, **kwargs})
+            kwargs['pid'] = ids[index]
+            self.view.run_command('assistant_ai_prompt', kwargs)
         # filter prompts by current state
         region = kwargs.get('region')
         if not region:
@@ -310,27 +308,27 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             ids.append(pid)
             name = sublime.expand_variables(prompt.name, str_kwargs)
             desc = sublime.expand_variables(prompt.description, str_kwargs)
-            items.append([f"{prompt.icon} {name}", f"{desc} [{pid.upper()}]"])
+            items.append(["{} {}".format(prompt.icon, name), "{} [{}]".format(desc, pid.upper())])
         if not items:
             icon_warn = "⚠️"
-            sublime.status_message(f"AssistantAI: {icon_warn} No available prompts here, in this context.")
+            sublime.status_message("AssistantAI: {} No available prompts here, in this context.".format(icon_warn))
             return
         win = self.view.window()
         if win:
             win.show_quick_panel(items=items, on_select=on_select)
 
-    def quick_panel_endpoints(self, **kwargs) -> None:
+    def quick_panel_endpoints(self, **kwargs):
         """
         Display a quick panel with all available endpoints for a given prompt.
         Automatically select the endpoint if only one is available.
 
         :return: None
         """
-        def on_select(index: int):
+        def on_select(index):
             if index < 0:
                 return
-            eid = ids[index]
-            self.view.run_command('assistant_ai_prompt', {'eid': eid, **kwargs})
+            kwargs['eid'] = ids[index]
+            self.view.run_command('assistant_ai_prompt', kwargs)
         pid = kwargs.get('pid')
         if not pid:
             return
@@ -340,11 +338,11 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
         items = []
         for eid, endpoint in endpoints.items():
             ids.append(eid)
-            items.append([f"{endpoint.icon} {endpoint.server_name} {endpoint.name}", f"{endpoint.url} [{eid}]"])
+            items.append(["{} {} {}".format(endpoint.icon, endpoint.server_name, endpoint.name), "{} [{}]".format(endpoint.url, eid)])
         # for endpoints, if only one choice is available, auto select it
         if not items:
             icon_warn = "⚠️"
-            sublime.status_message(f"AssistantAI: {icon_warn} No available endpoints for the selected prompt.")
+            sublime.status_message("AssistantAI: {} No available endpoints for the selected prompt.".format(icon_warn))
         if len(items) == 1:
             on_select(0)
             return
@@ -353,7 +351,7 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             return
         win.show_quick_panel(items=items, on_select=on_select)
 
-    def quick_panel_list(self, key: str, items: Union[List[str], List[List[str]]], **kwargs) -> None:
+    def quick_panel_list(self, key, items, **kwargs):
         """
         Displays a panel with a list of items to select, and upon selection,
         runs the 'assistant_ai_prompt' command with the selected item, as well as
@@ -368,10 +366,11 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             text = items[index]
             if isinstance(text, list):
                 text = text[0]
-            self.view.run_command('assistant_ai_prompt', {key: text, **kwargs})
+            kwargs[key] = text
+            self.view.run_command('assistant_ai_prompt', kwargs)
         if not items:
             icon_warn = "⚠️"
-            sublime.status_message(f"AssistantAI: {icon_warn} No available items for {key}.")
+            sublime.status_message("AssistantAI: {} No available items for {}.".format(icon_warn, key))
         if len(items) == 1:
             on_select(0)
             return
@@ -380,21 +379,22 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
             return
         win.show_quick_panel(items=items, on_select=on_select)
 
-    def input_panel(self, key:str, caption: str, **kwargs) -> None:
+    def input_panel(self, key, caption, **kwargs):
         """
         Displays an input panel to the user with a provided caption and waits for user input to be submitted.
 
         :return: None
         """
         def on_done(text):
-            self.view.run_command('assistant_ai_prompt', {key: text, **kwargs})
+            kwargs[key] = text
+            self.view.run_command('assistant_ai_prompt', kwargs)
         win = self.view.window()
         if not win:
             return
         win.show_input_panel(caption=caption, initial_text="",
             on_done=on_done, on_change=None, on_cancel=None)
 
-    def run_in(self, callback: Callable, delay: int=0, **kwargs):
+    def run_in(self, callback, delay=0, **kwargs):
         func = functools.partial(callback, **kwargs)
         sublime.set_timeout_async(func, delay)
 
@@ -407,12 +407,12 @@ class AssistantAiAsyncCommand(AssistantAiTextCommand):
 class AssistantAiPromptCommand(AssistantAiAsyncCommand):
     global settings
 
-    def run(self, edit: sublime.Edit, **kwargs) -> None:
+    def run(self, edit, **kwargs):
         # get prompt and endpoint if specificed
         pid = kwargs.get('pid')
         eid = kwargs.get('eid')
-        prompt: Optional[Prompt] = None
-        endpoint: Optional[Endpoint] = None
+        prompt = None
+        endpoint = None
         if pid and pid in settings.prompts:
             prompt = settings.prompts[pid]
         if eid and eid in settings.endpoints:
@@ -445,10 +445,12 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
                     stack.append(kwargs)
                     prompt_id = input_spec.prompt_id
                     prompt_args = {} if not input_spec.prompt_args else input_spec.prompt_args
-                    self.view.run_command('assistant_ai_prompt', {'pid': prompt_id, 'stack': stack, **prompt_args})
+                    args = {'pid': prompt_id, 'stack': stack}
+                    args.update(prompt_args)
+                    self.view.run_command('assistant_ai_prompt', args)
                     return
                 if input_spec and input_spec.type == 'list_from_prompt':
-                    items_key = f"__items_for_{req_in}"
+                    items_key = "__items_for_{}".format(req_in)
                     if items_key in kwargs:
                         items = kwargs.pop(items_key)
                         self.run_in(self.quick_panel_list, key=req_in, items=items, **kwargs)
@@ -459,7 +461,9 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
                     stack.append(kwargs)
                     prompt_id = input_spec.prompt_id
                     prompt_args = {} if not input_spec.prompt_args else input_spec.prompt_args
-                    self.view.run_command('assistant_ai_prompt', {'pid': prompt_id, 'stack': stack, **prompt_args})
+                    args = {'pid': prompt_id, 'stack': stack}
+                    args.update(prompt_args)
+                    self.view.run_command('assistant_ai_prompt', args)
                     return
             # generic input panel
             self.run_in(self.input_panel, key=req_in, caption=req_in.replace('_', ' ').title(), **kwargs)
@@ -483,19 +487,26 @@ class AssistantAiPromptCommand(AssistantAiAsyncCommand):
 class AssistantAiDumpCommand(AssistantAiTextCommand):
     global settings
 
-    def run(self, edit: sublime.Edit):
-        data = {
-            'endpoints': {k:asdict(v) for k, v in settings.endpoints.items()},
-            'prompts': {k:asdict(v) for k, v in settings.prompts.items()},
-        }
+    def run(self, edit):
+        def serializer(obj):
+            if hasattr(obj, 'to_dict'):
+                return obj.to_dict()
+            raise TypeError("Object of type {} is not JSON serializable".format(type(obj).__name__))
+        data = {}
+        data['endpoints'] = {}
+        data['prompts'] = {}
+        for k, v in settings.endpoints.items():
+            data['endpoints'][k] = dict((key, value) for key, value in vars(v).items())
+        for k, v in settings.prompts.items():
+            data['prompts'][k] = dict((key, value) for key, value in vars(v).items())
         self.view.run_command("assistant_ai_create_view", {
             "region": None,
-            "text": json.dumps(data, indent="\t"),
+            "text": json.dumps(data, default=serializer, indent="\t"),
             "kwargs": {'syntax': 'JSON'},
         })
 
 class AssistantAiReplaceTextCommand(AssistantAiTextCommand):
-    def run(self, edit: sublime.Edit, region: sublime.Region, text: str, kwargs: dict):
+    def run(self, edit, region, text, kwargs):
         """
         Replace the text of a region in a Sublime Text view.
 
@@ -521,11 +532,11 @@ class AssistantAiReplaceTextCommand(AssistantAiTextCommand):
         if kwargs.get('preserve_indentation', True):
             indent = self.get_region_indentation(region)
             text = self.indent_text(text, indent)
-        region = sublime.Region(*region)
+        region = sublime.Region(region[0], region[1])
         self.view.replace(edit, region, text)
 
 class AssistantAiPrependTextCommand(AssistantAiTextCommand):
-    def run(self, edit: sublime.Edit, region: sublime.Region, text: str, kwargs: dict):
+    def run(self, edit, region, text, kwargs):
         """
         Inserts `text` into the current view at the beginning of `region`.
 
@@ -553,11 +564,11 @@ class AssistantAiPrependTextCommand(AssistantAiTextCommand):
         if kwargs.get('preserve_indentation', True):
             indent = self.get_region_indentation(region)
             text = self.indent_text(text, indent)
-        region = sublime.Region(*region)
+        region = sublime.Region(region[0], region[1])
         self.view.insert(edit, region.begin(), text)
 
 class AssistantAiAppendTextCommand(AssistantAiTextCommand):
-    def run(self, edit: sublime.Edit, region: sublime.Region, text: str, kwargs: dict):
+    def run(self, edit, region, text, kwargs):
         """
         Inserts `text` into the current view at the end of `region`.
 
@@ -585,11 +596,11 @@ class AssistantAiAppendTextCommand(AssistantAiTextCommand):
         if kwargs.get('preserve_indentation', True):
             indent = self.get_region_indentation(region)
             text = self.indent_text(text, indent)
-        region = sublime.Region(*region)
+        region = sublime.Region(region[0], region[1])
         self.view.insert(edit, region.end(), text)
 
 class AssistantAiInsertTextCommand(AssistantAiTextCommand):
-    def run(self, edit: sublime.Edit, region: sublime.Region, text: str, kwargs: dict):
+    def run(self, edit, region, text, kwargs):
         """
         Replaces a given placeholder with the given text within the specified region.
 
@@ -604,14 +615,14 @@ class AssistantAiInsertTextCommand(AssistantAiTextCommand):
         """
         if kwargs.get('strip_output', True):
             text = text.strip()
-        region = sublime.Region(*region)
+        region = sublime.Region(region[0], region[1])
         placeholder = kwargs.get('placeholder', 'XXX')
         match = self.view.find(placeholder, region.begin())
         if region.contains(match.begin()) and region.contains(match.end()):
             self.view.replace(edit, match, text)
 
 class AssistantAiOutputPanelCommand(AssistantAiTextCommand):
-    def run(self, edit: sublime.Edit, region: sublime.Region, text: str, kwargs: dict):
+    def run(self, edit, region, text, kwargs):
         """
         Display output text in a new output panel.
 
@@ -628,14 +639,17 @@ class AssistantAiOutputPanelCommand(AssistantAiTextCommand):
         syntax = kwargs.get('syntax', 'Markdown')
         name = 'assistant_ai'
         self.output_panel = self.view.window().create_output_panel(name)
-        syntax_list = sublime.find_syntax_by_name(syntax)
-        if len(syntax_list) > 0:
-            self.output_panel.assign_syntax(syntax_list[0])
-        self.view.window().run_command("show_panel", {"panel": f"output.{name}"})
+        try:
+            syntax_list = sublime.find_syntax_by_name(syntax)
+            if len(syntax_list) > 0:
+                self.output_panel.assign_syntax(syntax_list[0])
+        except AttributeError:
+            pass
+        self.view.window().run_command("show_panel", {"panel": "output.{}".format(name)})
         self.output_panel.run_command('append', {'characters': text})
 
 class AssistantAiCreateViewCommand(AssistantAiTextCommand):
-    def run(self, edit: sublime.Edit, region: sublime.Region, text: str, kwargs: dict):
+    def run(self, edit, region, text, kwargs):
         """
         Create a new view and assign the appropriate syntax to it. Add the output provided to the new view.
 
@@ -662,9 +676,12 @@ class AssistantAiCreateViewCommand(AssistantAiTextCommand):
         # Create a new view
         new_view = self.view.window().new_file()
         # set a proper syntax
-        syntax_list = sublime.find_syntax_by_name(syntax)
-        if len(syntax_list) > 0:
-            new_view.assign_syntax(syntax_list[0])
+        try:
+            syntax_list = sublime.find_syntax_by_name(syntax)
+            if len(syntax_list) > 0:
+                new_view.assign_syntax(syntax_list[0])
+        except AttributeError:
+            pass
         # add the output
         new_view.run_command("append", {"characters": text})
 

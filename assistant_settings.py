@@ -1,25 +1,14 @@
 import sublime
 import copy
 import uuid
-from dataclasses import dataclass
-from typing import Dict, List, Set, Any, Optional, Union
 from .assistant_qdict import QDict
 
 PKG_NAME = 'AssistantAI'
 SETTINGS_FILE = 'assistant_ai.sublime-settings'
 PKG_SETTINGS_FILE_BLOB = 'assistant_ai*.sublime-settings'
 
-# types for hinting
-Credentials = Dict[str, Any]
-
-@dataclass
-class SettingsDataLoader:
-    ident: str
-    spec: Dict[str, Any]
-    import_spec: Dict[str, Any]
-    import_result: Optional[bool]
-
-    def __init__(self, data: dict, ident: Optional[str]=None, item_type: str='item'):
+class SettingsDataLoader(object):
+    def __init__(self, data, ident=None, item_type='item'):
         """
         Loads the item from the given dict coming from Sublime settings.
         If the item imports from another, this is not processed. Call import_from(...).
@@ -33,7 +22,7 @@ class SettingsDataLoader:
         self.import_spec = self.load_dict(data, 'import', str_to_dict='from')
         self.import_result = None
 
-    def load_str(self, data: Union[dict, sublime.Settings], key: str, alt: str='') -> str:
+    def load_str(self, data, key, alt=''):
         """
         Load a string value from the given data dictionary using the given key.
 
@@ -58,9 +47,9 @@ class SettingsDataLoader:
             return alt
         if isinstance(item, str):
             return item
-        raise TypeError(f"'{key}' must be a string. id='{self.ident}'.")
+        raise TypeError("'{}' must be a string. id='{}'.".format(key, self.ident))
 
-    def load_int(self, data: Union[dict, sublime.Settings], key: str, alt: int=0) -> int:
+    def load_int(self, data, key, alt=0):
         if not data:
             return alt
         try:
@@ -71,9 +60,9 @@ class SettingsDataLoader:
             return alt
         if isinstance(item, int):
             return item
-        raise TypeError(f"'{key}' must be an integer. id='{self.ident}'.")
+        raise TypeError("'{}' must be an integer. id='{}'.".format(key, self.ident))
 
-    def load_dict(self, data: Union[dict, sublime.Settings], key: str, str_to_dict: Optional[str]=None) -> dict:
+    def load_dict(self, data, key, str_to_dict=None):
         if not data:
             return {}
         try:
@@ -86,12 +75,12 @@ class SettingsDataLoader:
             item = {str_to_dict: item}
         if not isinstance(item, dict):
             if not str_to_dict:
-                raise TypeError(f"'{key}' must be an object. id='{self.ident}'.")
+                raise TypeError("'{}' must be an object. id='{}'.".format(key, self.ident))
             else:
-                raise TypeError(f"'{key}' must be an object or string. id='{self.ident}'.")
+                raise TypeError("'{}' must be an object or string. id='{}'.".format(key, self.ident))
         return item
 
-    def load_list_str(self, data: Union[dict, sublime.Settings], key: str, str_to_list: bool=True) -> List[str]:
+    def load_list_str(self, data, key, str_to_list=True):
         if not data:
             return []
         try:
@@ -103,13 +92,13 @@ class SettingsDataLoader:
         if str_to_list and isinstance(items, str):
             items = [items, ]
         if not isinstance(items, list):
-            raise TypeError(f"'{key}' must be a list of strings. id='{self.ident}'.")
+            raise TypeError("'{}' must be a list of strings. id='{}'.".format(key, self.ident))
         for item in items:
             if not isinstance(item, str):
-                raise TypeError(f"'{key}' must be a list of strings. id='{self.ident}'.")
+                raise TypeError("'{}' must be a list of strings. id='{}'.".format(key, self.ident))
         return items
 
-    def load_list_dict(self, data: Union[dict, sublime.Settings], key: str) -> List[dict]:
+    def load_list_dict(self, data, key):
         if not data:
             return []
         try:
@@ -119,27 +108,27 @@ class SettingsDataLoader:
         if not items:
             return []
         if not isinstance(items, list):
-            raise TypeError(f"'{key}' must be a list of objects. id='{self.ident}'.")
+            raise TypeError("'{}' must be a list of objects. id='{}'.".format(key, self.ident))
         for item in items:
             if not isinstance(item, dict):
-                raise TypeError(f"'{key}' must be a list of objects. id='{self.ident}'.")
+                raise TypeError("'{}' must be a list of objects. id='{}'.".format(key, self.ident))
         return items
 
-    def ensure_dict_str_str(self, data:Dict[str, Any], dismiss:bool=True) -> Dict[str, str]:
+    def ensure_dict_str_str(self, data, dismiss=True):
         if dismiss:
             return {k:v for k,v in data.items() if isinstance(v, str)}
         else:
             return {k:str(v) for k,v in data.items()}
 
-    def import_pending(self) -> bool:
+    def import_pending(self):
         if not self.import_spec:
             return False
         return self.import_result is None
 
-    def import_done(self) -> bool:
+    def import_done(self):
         return self.import_result is True
 
-    def import_failed(self) -> bool:
+    def import_failed(self):
         return self.import_result is False
 
     def import_failure(self):
@@ -150,7 +139,7 @@ class SettingsDataLoader:
         self.import_result = True
         return self
 
-    def import_from(self, parents: Dict[str, Any], chain: Optional[List[str]]=None):
+    def import_from(self, parents, chain=None):
         """
         Process the item import specification given the current available parents
         and return a new expanded Item without the import statement.
@@ -234,38 +223,13 @@ class SettingsDataLoader:
         cls = type(self)
         return cls(new_spec, self.ident).import_completed()
 
-@dataclass
 class Endpoint(SettingsDataLoader):
-    eid: str
-    name: str
-    icon: str
-    # endpoint interface
-    method: str
-    resource: str
-    # prompt requirements
-    required_vars: List[str]
-    # request body and params specification
-    valid_params: Dict[str, str]
-    request: Dict[str, Any]
-    query: Dict[str, str]
-    # response data retrieval specification
-    response: Dict[str, Any]
-    # server data
-    sid: Optional[str]
-    sid_base: Optional[str]
-    server_name: Optional[str]
-    url: Optional[str]
-    timeout: Optional[int]
-    credentials: Optional[Credentials]
-    required_credentials: Optional[List[str]]
-    headers: Optional[Dict[str, str]]
-
-    def __init__(self, data: dict, ident: Optional[str]=None, item_type: str='endpoint'):
+    def __init__(self, data, ident=None, item_type='endpoint'):
         """
         Loads the endpoint from the given dict coming from Sublime settings.
         If the endpoint imports from another, this is not processed. Call import_from(...).
         """
-        super().__init__(data, ident, item_type)
+        super(Endpoint, self).__init__(data, ident, item_type)
         # Identification data
         self.eid = self.load_str(data, 'id', self.ident)
         self.name = self.load_str(data, 'name', self.eid.replace('_', ' ').title())
@@ -302,7 +266,7 @@ class Endpoint(SettingsDataLoader):
         self.required_credentials = None
         self.headers = None
 
-    def set_server_data(self, server: 'Server') -> None:
+    def set_server_data(self, server):
         """
         Set the server data (ID, server name, URL, timeout, credentials, required credentials, and headers)
         Args:
@@ -319,14 +283,14 @@ class Endpoint(SettingsDataLoader):
         self.required_credentials = server.required_credentials
         self.headers = server.headers
 
-    def parse_response(self, data: dict) -> Dict[str, Any]:
-        response: Dict[str, Any] = {}
+    def parse_response(self, data):
+        response = {}
         # get the response remplate of the endpoint
         spec = self.response
         paths = spec.get('paths', {})
         output = spec.get('output', '${text}')
         if not spec or not paths or not isinstance(paths, dict):
-            response['error'] = f"The endpoint doesn't specify any valid reponse template."
+            response['error'] = "The endpoint doesn't specify any valid reponse template."
             return response
         # get the data from specified paths
         qdata = QDict(data)
@@ -366,25 +330,37 @@ class Endpoint(SettingsDataLoader):
         response['response'] = data
         return response
 
-@dataclass
-class Server(SettingsDataLoader):
-    sid: str
-    name: str
-    url: str
-    timeout: int
-    # server requirements
-    credentials: Credentials
-    required_credentials: List[str]
-    # specs
-    headers: Dict[str, str]
-    endpoints: Dict[str, Endpoint]
+    def to_dict(self):
+        """
+        Converts the Endpoint object into a dictionary format for JSON serialization.
+        """
+        return {
+            "eid": self.eid,
+            "name": self.name,
+            "icon": self.icon,
+            "method": self.method,
+            "resource": self.resource,
+            "required_vars": self.required_vars,
+            "valid_params": self.valid_params,
+            "request": self.request,
+            "query": self.query,
+            "response": self.response,
+            "sid": self.sid,
+            "server_name": self.server_name,
+            "url": self.url,
+            "timeout": self.timeout,
+            "credentials": self.credentials,
+            "required_credentials": self.required_credentials,
+            "headers": self.headers
+        }
 
-    def __init__(self, data: dict, ident: Optional[str]=None, item_type: str='server'):
+class Server(SettingsDataLoader):
+    def __init__(self, data, ident=None, item_type='server'):
         """
         Loads the server from the given dict coming from Sublime settings.
         If the server imports from another, this is not processed. Call import_from(...).
         """
-        super().__init__(data, ident, item_type)
+        super(Server, self).__init__(data, ident, item_type)
         # Identification data
         self.sid = self.load_str(data, 'id', self.ident)
         self.name = self.load_str(data, 'name', self.sid.replace('_', ' ').title())
@@ -402,7 +378,7 @@ class Server(SettingsDataLoader):
             self.endpoints[eid] = Endpoint(endpoints[eid], eid)
             self.endpoints[eid].set_server_data(self)
 
-    def set_credentials(self, credentials: Credentials) -> None:
+    def set_credentials(self, credentials):
         self.credentials = credentials
         # this loads headers without processing again
         self.headers = self.load_dict(self.spec, 'headers')
@@ -412,22 +388,28 @@ class Server(SettingsDataLoader):
         for eid in self.endpoints:
             self.endpoints[eid].set_server_data(self)
 
-@dataclass
-class PromptInput(SettingsDataLoader):
-    name: str
-    type: str
-    caption: str
-    description: str
-    items: Optional[List[str]]
-    prompt_id: Optional[str]
-    prompt_args: Optional[Dict[str, Any]]
+    def to_dict(self):
+        """
+        Converts the Server object into a dictionary format for JSON serialization.
+        """
+        return {
+            "sid": self.sid,
+            "name": self.name,
+            "url": self.url,
+            "timeout": self.timeout,
+            "credentials": self.credentials,
+            "required_credentials": self.required_credentials,
+            "headers": self.headers,
+            "endpoints": {key: endpoint.to_dict() for key, endpoint in self.endpoints.items()}
+        }
 
-    def __init__(self, data: dict, ident: Optional[str]=None, item_type: str='prompt_input'):
+class PromptInput(SettingsDataLoader):
+    def __init__(self, data, ident=None, item_type='prompt_input'):
         """
         Loads the prompt input from the given dict coming from Sublime settings.
         If type is list, items must be provided.
         """
-        super().__init__(data, ident, item_type)
+        super(PromptInput, self).__init__(data, ident, item_type)
         # Prompt input specification
         self.name = self.ident
         self.type = self.load_str(data, 'type', 'text').lower()
@@ -439,42 +421,35 @@ class PromptInput(SettingsDataLoader):
         if self.type == 'list':
             self.items = self.load_list_str(data, 'items')
         elif self.type == 'text':
-            ...
+            pass
         elif self.type == 'list_from_prompt':
             self.prompt_id = self.load_str(data, 'prompt_id')
             self.prompt_args = self.load_dict(data, 'prompt_args')
         elif self.type == 'text_from_prompt':
             self.prompt_id = self.load_str(data, 'prompt_id')
             self.prompt_args = self.load_dict(data, 'prompt_args')
+    
+    def to_dict(self):
+        """
+        Converts the object into a dictionary format for JSON serialization.
+        """
+        return {
+            "name": self.name,
+            "type": self.type,
+            "caption": self.caption,
+            "description": self.description,
+            "items": self.items,
+            "prompt_id": self.prompt_id,
+            "prompt_args": self.prompt_args
+        }
 
-@dataclass
 class Prompt(SettingsDataLoader):
-    pid: str
-    name: str
-    icon: str
-    description: str
-    visible: bool
-    # input definitions
-    inputs: Dict[str, PromptInput]
-    # prompt requirements
-    required_inputs: List[str]
-    required_syntax: List[str]
-    required_context: Dict[str, Any]
-    required_endpoints: List[str]
-    # variables offered by this prompt
-    variables: Dict[str, Any]
-    # call payload, query-string and data body
-    params: Dict[str, Any]
-    query: Dict[str, str]
-    # the command to execute once the prompt is processed
-    command: Dict[str, Any]
-
-    def __init__(self, data: dict, ident: Optional[str]=None, item_type: str='prompt'):
+    def __init__(self, data, ident=None, item_type='prompt'):
         """
         Loads the prompt from the given dict coming from Sublime settings.
         If the prompt imports from another, this is not processed. Call import_from(...).
         """
-        super().__init__(data, ident, item_type)
+        super(Prompt, self).__init__(data, ident, item_type)
         # Prompt identification data
         self.pid = self.load_str(data, 'id', self.ident)
         self.name = self.load_str(data, 'name', self.pid.replace('_', ' ').title())
@@ -496,7 +471,7 @@ class Prompt(SettingsDataLoader):
         if not self.variables:
             prompt_vars = {}
             for r in self.required_inputs:
-                prompt_vars[r] = f'${{{r}}}'
+                prompt_vars[r] = "${" + r + "}"
             self.variables = prompt_vars
         # Payload params and query
         self.params = self.load_dict(data, 'params')
@@ -518,22 +493,38 @@ class Prompt(SettingsDataLoader):
             cmd = 'replace'
         return cmdmap.get(cmd, 'assistant_ai_replace_text')
 
-@dataclass
+    def to_dict(self):
+        """
+        Converts the object into a dictionary format for JSON serialization.
+        """
+        return {
+            "pid": self.pid,
+            "name": self.name,
+            "icon": self.icon,
+            "description": self.description,
+            "visible": self.visible,
+            "inputs": {key: input_obj.to_dict() for key, input_obj in self.inputs.items()},
+            "required_inputs": self.required_inputs,
+            "required_syntax": self.required_syntax,
+            "required_context": self.required_context,
+            "required_endpoints": self.required_endpoints,
+            "variables": self.variables,
+            "params": self.params,
+            "query": self.query,
+            "command": self.command
+        }
+
 class AssistantAISettings(SettingsDataLoader):
     """
     Handles all AssistantAI settings.
     """
-    prompts: Dict[str, Prompt]
-    endpoints: Dict[str, Endpoint]
-    settings_callbacks: Dict[str, sublime.Settings]
-
     def __init__(self):
-        super().__init__({}, ident='assistant_ai', item_type='root_settings')
+        super(AssistantAISettings, self).__init__({}, ident='assistant_ai', item_type='root_settings')
         self.prompts = {}
         self.endpoints = {}
         self.settings_callbacks = {}
 
-    def load(self) -> None:
+    def load(self):
         """
         Loads settings and prompts from all packages that provides AssistantAI settings.
         Any package providing assistant_ai*.sublime-settings will be processed.
@@ -544,7 +535,7 @@ class AssistantAISettings(SettingsDataLoader):
         :return: None
         """
         # Get all settings from all packages that provides AssistantAI settings.
-        files: Set[str] = set()
+        files = set()
         for resource in sublime.find_resources(PKG_SETTINGS_FILE_BLOB):
             files.add(resource.split('/')[-1])
         # load endpoints for each settings file.
@@ -563,7 +554,7 @@ class AssistantAISettings(SettingsDataLoader):
         for pid, prompt in self.prompts.items():
             self.prompts[pid] = prompt.import_from(self.prompts)
 
-    def unload(self) -> None:
+    def unload(self):
         """
         Clears all the 'assistant_ai' settings on_change callbacks from the
         `settings_callbacks` dictionary.
@@ -573,7 +564,7 @@ class AssistantAISettings(SettingsDataLoader):
         for file in self.settings_callbacks:
             self.settings_callbacks[file].clear_on_change('assistant_ai')
 
-    def load_settings_from(self, file: str) -> sublime.Settings:
+    def load_settings_from(self, file):
         """
         Load settings from a given file in Sublime Text.
 
@@ -593,7 +584,7 @@ class AssistantAISettings(SettingsDataLoader):
             self.settings_callbacks[file] = settings
         return settings
 
-    def load_credentials_from(self, settings: sublime.Settings) -> Credentials:
+    def load_credentials_from(self, settings):
         """
         Extracts valid credentials from settings.
 
@@ -607,7 +598,7 @@ class AssistantAISettings(SettingsDataLoader):
                 creds[cid] = cred
         return creds
 
-    def get_credentials_for(self, server: Server, credentials: dict) -> Credentials:
+    def get_credentials_for(self, server, credentials):
         creds = {}
         if server.sid in credentials and isinstance(credentials[server.sid], dict):
             creds.update(credentials[server.sid])
@@ -615,7 +606,7 @@ class AssistantAISettings(SettingsDataLoader):
             creds.update(credentials)
         return {k:v for k,v in creds.items() if isinstance(v, str)}
 
-    def load_servers_from(self, settings: sublime.Settings, credentials: Credentials) -> Dict[str, Server]:
+    def load_servers_from(self, settings, credentials):
         """
         This function loads available servers from settings and return servers
         that can be accessed using provided credentials.
@@ -627,11 +618,11 @@ class AssistantAISettings(SettingsDataLoader):
         :return: A dictionary containing Id and info of servers that can be accessed using provided credentials.
         :rtype: dict
         """
-        servers_list: List[dict] = []
+        servers_list = []
         servers_list += self.load_list_dict(settings, 'default_servers')
         servers_list += self.load_list_dict(settings, 'servers')
         # create Server objects and keep only valid ones
-        servers: Dict[str, Server] = {}
+        servers = {}
         for server in servers_list:
             new = Server(server)
             servers[new.sid] = new
@@ -654,7 +645,7 @@ class AssistantAISettings(SettingsDataLoader):
                 servers[sid].set_credentials(srv_creds)
         return {sid:srv for sid,srv in servers.items() if sid not in to_dismiss}
 
-    def load_endpoints_from(self, servers: Dict[str, Server]) -> Dict[str, Endpoint]:
+    def load_endpoints_from(self, servers):
         """
         Load all available endpoints from given servers and process their headers.
 
@@ -667,10 +658,10 @@ class AssistantAISettings(SettingsDataLoader):
         endpoints = {}
         for sid, server in servers.items():
             for eid, endpoint in server.endpoints.items():
-                endpoints[f'{sid}/{eid}'] = endpoint
+                endpoints['{}/{}'.format(sid, eid)] = endpoint
         return endpoints
 
-    def load_prompts_from(self, settings: sublime.Settings) -> Dict[str, Prompt]:
+    def load_prompts_from(self, settings):
         """
         This function loads prompts from the settings file and filters out prompts that require unavailable endpoints.
 
@@ -691,8 +682,7 @@ class AssistantAISettings(SettingsDataLoader):
             prompts[prompt.pid] = prompt
         return prompts
 
-    # TODO: typing for available context
-    def filter_prompts_by_available_context(self, prompts: Dict[str, Prompt], available_context) -> Dict[str, Prompt]:
+    def filter_prompts_by_available_context(self, prompts, available_context):
         """
         Returns all usable prompts filtering by current edit state.
         Selected text, available context pre and/or post contents.
@@ -717,7 +707,7 @@ class AssistantAISettings(SettingsDataLoader):
                 to_filter.add(p)
         return {k: v for k, v in prompts.items() if k not in to_filter}
 
-    def filter_prompts_by_available_endpoints(self, prompts: Dict[str, Prompt]) -> Dict[str, Prompt]:
+    def filter_prompts_by_available_endpoints(self, prompts):
         """
         Returns all usable prompts filtering by availability of suitable endpoints.
         Selected text, available context pre and/or post contents.
@@ -729,7 +719,7 @@ class AssistantAISettings(SettingsDataLoader):
                 to_filter.add(p)
         return {k: v for k, v in prompts.items() if k not in to_filter}
 
-    def filter_prompts_by_syntax(self, prompts: Dict[str, Prompt], syntax: Optional[str]=None) -> Dict[str, Prompt]:
+    def filter_prompts_by_syntax(self, prompts, syntax=None):
         """
         Returns all loaded usable prompts filtering by syntax
         """
@@ -745,7 +735,7 @@ class AssistantAISettings(SettingsDataLoader):
                 to_filter.add(p)
         return {k: v for k, v in prompts.items() if k not in to_filter}
 
-    def filter_prompts_by_visibility(self, prompts: Dict[str, Prompt]) -> Dict[str, Prompt]:
+    def filter_prompts_by_visibility(self, prompts):
         """
         Returns all loaded prompts filtering by visible flag
         """
@@ -755,7 +745,7 @@ class AssistantAISettings(SettingsDataLoader):
                 to_filter.add(p)
         return {k: v for k, v in prompts.items() if k not in to_filter}
 
-    def get_endpoints_for_prompt(self, prompt: Prompt) -> Dict[str, Endpoint]:
+    def get_endpoints_for_prompt(self, prompt):
         """
         Returns all loaded usable endpoints for a given prompt
         """
@@ -767,7 +757,7 @@ class AssistantAISettings(SettingsDataLoader):
                 sid = self.endpoints[eid].sid
                 sid_base = self.endpoints[eid].sid_base
                 if sid and sid_base and sid != sid_base:
-                    new_eip = eid.replace(f"{sid_base}/", f"{sid}/")
+                    new_eip = eid.replace("{}/".format(sid_base), "{}/".format(sid))
                     valid_eps.append(new_eip)
         for eid in self.endpoints:
             # if prompt requires endpoints, filter all other endpoints

@@ -42,7 +42,7 @@
 			"icon": "🐍",
 			"description": "Add docstring to selected ${syntax} function.",
 			"required_inputs": ["text"],
-			"required_syntax": ["python"],
+			"required_syntax": ["python", "source.python"],
 			"vars": {
 				"text": [
 					"Add the docstring to the following ${syntax} code following theses rules:",
@@ -75,7 +75,7 @@
 			"icon": "🐍",
 			"description": "Explain the selected code.",
 			"required_inputs": ["text"],
-			"required_syntax": ["python"],
+			"required_syntax": ["python", "source.python"],
 			"vars": {
 				"text": [
 					"Explain the following ${syntax} code following these rules:",
